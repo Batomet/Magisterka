@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pitchvision"
+version = "0.1.0"
+description = "Spatial analysis of football team behaviors via projective transformation (YOLO + ByteTrack + homography)."
+requires-python = ">=3.9"
+dependencies = [
+    "ultralytics>=8.2",
+    "opencv-python-headless>=4.9",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "scipy>=1.11",
+    "lap>=0.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
