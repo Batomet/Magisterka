@@ -85,4 +85,11 @@ PITCH_LANDMARKS_M = {
     "left_six_yard_bottom": (5.5, (PITCH_WIDTH_M + 18.32) / 2),
     "right_six_yard_top": (PITCH_LENGTH_M - 5.5, (PITCH_WIDTH_M - 18.32) / 2),
     "right_six_yard_bottom": (PITCH_LENGTH_M - 5.5, (PITCH_WIDTH_M + 18.32) / 2),
+    # Goal width: 7.32 m, centred on the goal line. Click the point where each
+    # post meets the grass (ground level) - the crossbar/post top is *not* on
+    # the pitch plane and will bias the homography if used as a correspondence.
+    "left_goal_post_top": (0.0, (PITCH_WIDTH_M - 7.32) / 2),
+    "left_goal_post_bottom": (0.0, (PITCH_WIDTH_M + 7.32) / 2),
+    "right_goal_post_top": (PITCH_LENGTH_M, (PITCH_WIDTH_M - 7.32) / 2),
+    "right_goal_post_bottom": (PITCH_LENGTH_M, (PITCH_WIDTH_M + 7.32) / 2),
 }
