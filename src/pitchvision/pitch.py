@@ -5,7 +5,16 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle
 
-from .config import PITCH_LENGTH_M, PITCH_WIDTH_M
+from .config import (
+    CENTRE_CIRCLE_RADIUS_M,
+    GOAL_BOX_LENGTH_M,
+    GOAL_BOX_WIDTH_M,
+    PENALTY_BOX_LENGTH_M,
+    PENALTY_BOX_WIDTH_M,
+    PENALTY_SPOT_DISTANCE_M,
+    PITCH_LENGTH_M,
+    PITCH_WIDTH_M,
+)
 
 
 def draw_pitch(ax: Optional[Axes] = None, line_color: str = "white", pitch_color: str = "#0b6623") -> Axes:
@@ -18,23 +27,23 @@ def draw_pitch(ax: Optional[Axes] = None, line_color: str = "white", pitch_color
     ax.set_facecolor(pitch_color)
     ax.add_patch(Rectangle((0, 0), L, W, fill=False, edgecolor=line_color, linewidth=1.5))
     ax.plot([L / 2, L / 2], [0, W], color=line_color, linewidth=1.5)
-    ax.add_patch(plt.Circle((L / 2, W / 2), 9.15, fill=False, edgecolor=line_color, linewidth=1.5))
+    ax.add_patch(plt.Circle((L / 2, W / 2), CENTRE_CIRCLE_RADIUS_M, fill=False, edgecolor=line_color, linewidth=1.5))
     ax.plot(L / 2, W / 2, marker="o", color=line_color, markersize=2)
 
     for x0, direction in ((0, 1), (L, -1)):
         ax.add_patch(
             Rectangle(
-                (x0, (W - 40.32) / 2), direction * 16.5, 40.32,
+                (x0, (W - PENALTY_BOX_WIDTH_M) / 2), direction * PENALTY_BOX_LENGTH_M, PENALTY_BOX_WIDTH_M,
                 fill=False, edgecolor=line_color, linewidth=1.5,
             )
         )
         ax.add_patch(
             Rectangle(
-                (x0, (W - 18.32) / 2), direction * 5.5, 18.32,
+                (x0, (W - GOAL_BOX_WIDTH_M) / 2), direction * GOAL_BOX_LENGTH_M, GOAL_BOX_WIDTH_M,
                 fill=False, edgecolor=line_color, linewidth=1.5,
             )
         )
-        penalty_spot_x = 11 if direction == 1 else L - 11
+        penalty_spot_x = PENALTY_SPOT_DISTANCE_M if direction == 1 else L - PENALTY_SPOT_DISTANCE_M
         ax.plot(penalty_spot_x, W / 2, marker="o", color=line_color, markersize=2)
 
     ax.set_xlim(-5, L + 5)

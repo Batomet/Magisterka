@@ -1,7 +1,17 @@
 import cv2
 import numpy as np
 
-from .config import PITCH_LENGTH_M, PITCH_WIDTH_M
+from .config import (
+    CENTRE_CIRCLE_RADIUS_M,
+    GOAL_BOX_LENGTH_M,
+    GOAL_BOX_WIDTH_M,
+    GOAL_WIDTH_M,
+    PENALTY_BOX_LENGTH_M,
+    PENALTY_BOX_WIDTH_M,
+    PENALTY_SPOT_DISTANCE_M,
+    PITCH_LENGTH_M,
+    PITCH_WIDTH_M,
+)
 
 
 class PitchCalibrator:
@@ -75,21 +85,28 @@ PITCH_LANDMARKS_M = {
     "centre_top": (PITCH_LENGTH_M / 2, 0.0),
     "centre_bottom": (PITCH_LENGTH_M / 2, PITCH_WIDTH_M),
     "centre_spot": (PITCH_LENGTH_M / 2, PITCH_WIDTH_M / 2),
-    # Standard penalty box: 16.5 m deep, 40.32 m wide, centred on the goal line.
-    "left_penalty_top": (16.5, (PITCH_WIDTH_M - 40.32) / 2),
-    "left_penalty_bottom": (16.5, (PITCH_WIDTH_M + 40.32) / 2),
-    "right_penalty_top": (PITCH_LENGTH_M - 16.5, (PITCH_WIDTH_M - 40.32) / 2),
-    "right_penalty_bottom": (PITCH_LENGTH_M - 16.5, (PITCH_WIDTH_M + 40.32) / 2),
-    # Six-yard box: 5.5 m deep, 18.32 m wide.
-    "left_six_yard_top": (5.5, (PITCH_WIDTH_M - 18.32) / 2),
-    "left_six_yard_bottom": (5.5, (PITCH_WIDTH_M + 18.32) / 2),
-    "right_six_yard_top": (PITCH_LENGTH_M - 5.5, (PITCH_WIDTH_M - 18.32) / 2),
-    "right_six_yard_bottom": (PITCH_LENGTH_M - 5.5, (PITCH_WIDTH_M + 18.32) / 2),
-    # Goal width: 7.32 m, centred on the goal line. Click the point where each
-    # post meets the grass (ground level) - the crossbar/post top is *not* on
-    # the pitch plane and will bias the homography if used as a correspondence.
-    "left_goal_post_top": (0.0, (PITCH_WIDTH_M - 7.32) / 2),
-    "left_goal_post_bottom": (0.0, (PITCH_WIDTH_M + 7.32) / 2),
-    "right_goal_post_top": (PITCH_LENGTH_M, (PITCH_WIDTH_M - 7.32) / 2),
-    "right_goal_post_bottom": (PITCH_LENGTH_M, (PITCH_WIDTH_M + 7.32) / 2),
+    # Penalty box.
+    "left_penalty_top": (PENALTY_BOX_LENGTH_M, (PITCH_WIDTH_M - PENALTY_BOX_WIDTH_M) / 2),
+    "left_penalty_bottom": (PENALTY_BOX_LENGTH_M, (PITCH_WIDTH_M + PENALTY_BOX_WIDTH_M) / 2),
+    "right_penalty_top": (PITCH_LENGTH_M - PENALTY_BOX_LENGTH_M, (PITCH_WIDTH_M - PENALTY_BOX_WIDTH_M) / 2),
+    "right_penalty_bottom": (PITCH_LENGTH_M - PENALTY_BOX_LENGTH_M, (PITCH_WIDTH_M + PENALTY_BOX_WIDTH_M) / 2),
+    "left_penalty_spot": (PENALTY_SPOT_DISTANCE_M, PITCH_WIDTH_M / 2),
+    "right_penalty_spot": (PITCH_LENGTH_M - PENALTY_SPOT_DISTANCE_M, PITCH_WIDTH_M / 2),
+    # Six-yard box.
+    "left_six_yard_top": (GOAL_BOX_LENGTH_M, (PITCH_WIDTH_M - GOAL_BOX_WIDTH_M) / 2),
+    "left_six_yard_bottom": (GOAL_BOX_LENGTH_M, (PITCH_WIDTH_M + GOAL_BOX_WIDTH_M) / 2),
+    "right_six_yard_top": (PITCH_LENGTH_M - GOAL_BOX_LENGTH_M, (PITCH_WIDTH_M - GOAL_BOX_WIDTH_M) / 2),
+    "right_six_yard_bottom": (PITCH_LENGTH_M - GOAL_BOX_LENGTH_M, (PITCH_WIDTH_M + GOAL_BOX_WIDTH_M) / 2),
+    # Goal posts. Click the point where each post meets the grass (ground
+    # level) - the crossbar/post top is *not* on the pitch plane and will
+    # bias the homography if used as a correspondence.
+    "left_goal_post_top": (0.0, (PITCH_WIDTH_M - GOAL_WIDTH_M) / 2),
+    "left_goal_post_bottom": (0.0, (PITCH_WIDTH_M + GOAL_WIDTH_M) / 2),
+    "right_goal_post_top": (PITCH_LENGTH_M, (PITCH_WIDTH_M - GOAL_WIDTH_M) / 2),
+    "right_goal_post_bottom": (PITCH_LENGTH_M, (PITCH_WIDTH_M + GOAL_WIDTH_M) / 2),
+    # Centre-circle tangent points on the halfway line and long axis.
+    "centre_circle_top": (PITCH_LENGTH_M / 2, PITCH_WIDTH_M / 2 - CENTRE_CIRCLE_RADIUS_M),
+    "centre_circle_bottom": (PITCH_LENGTH_M / 2, PITCH_WIDTH_M / 2 + CENTRE_CIRCLE_RADIUS_M),
+    "centre_circle_left": (PITCH_LENGTH_M / 2 - CENTRE_CIRCLE_RADIUS_M, PITCH_WIDTH_M / 2),
+    "centre_circle_right": (PITCH_LENGTH_M / 2 + CENTRE_CIRCLE_RADIUS_M, PITCH_WIDTH_M / 2),
 }
