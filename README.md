@@ -26,33 +26,39 @@ src/pitchvision/       Core Python package
   pitch_keypoints.py       Automatic calibration via a pretrained pitch-keypoint model
   pitch.py                 Top-down pitch drawing (matplotlib)
   team.py                  Jersey-colour team classification (KMeans)
+  compactness.py           Inter-player-distance compactness metrics (generic, reused across phases)
+  voronoi.py                Voronoi-tessellation space control (generic, reused across phases)
   pipeline.py              Ties detection+tracking+calibration+team classification into a track DataFrame
 notebooks/
-  00_pipeline_demo.ipynb   Colab notebook: run the core pipeline end-to-end on a sample clip
+  00_pipeline_demo.ipynb                 Colab notebook: run the core pipeline end-to-end on a sample clip
+  01_goal_scoring_opportunity.ipynb       Defensive compactness + Voronoi space control on a Goals clip
 ```
 
 ## Status
 
-Implemented: detection, tracking, pitch calibration, and team classification
-— the shared foundation all three phase analyses build on.
+Implemented: detection, tracking, pitch calibration, team classification —
+the shared foundation all three phase analyses build on — plus the first
+phase-specific analysis, goal-scoring opportunity (defensive compactness +
+Voronoi space control, `01_goal_scoring_opportunity.ipynb`).
 
-Not yet implemented: the three phase-specific analyses themselves
-(goal-scoring opportunity, build-up, set pieces) — see the "Next steps" cell
-at the end of `00_pipeline_demo.ipynb`.
+Not yet implemented: the other two phase-specific analyses (build-up,
+set pieces) — see the "Next steps" cell at the end of
+`01_goal_scoring_opportunity.ipynb`.
 
 ## Usage (Google Colab)
 
 1. Footage lives in three Google Drive folders: `BuildingAction`, `Goals`,
    `SetPieces`.
-2. Open `notebooks/00_pipeline_demo.ipynb` in Colab (or run it via the
-   `File > Open notebook > GitHub` dialog pointed at this repo/branch).
-3. Run the cells top to bottom: they clone this repo, install dependencies,
-   mount Drive, sanity-check detection, calibrate the pitch homography
-   automatically from detected pitch keypoints (manual point-picking is
-   available as a fallback), cluster players into two teams by jersey
-   colour, run the full tracking pipeline with team labels attached, and
-   save the resulting per-frame pitch-coordinate tracks as a CSV back to
-   Drive.
+2. Start with `notebooks/00_pipeline_demo.ipynb` in Colab (or run it via the
+   `File > Open notebook > GitHub` dialog pointed at this repo/branch) to
+   sanity-check the pipeline on a clip: detection, automatic pitch
+   calibration (manual point-picking as a fallback), team classification,
+   and the full tracking pipeline, saved as a CSV back to Drive.
+3. Then open `notebooks/01_goal_scoring_opportunity.ipynb` for the first
+   phase-specific analysis: it re-runs the same setup condensed into one
+   section on a clip from `Goals`, then computes defensive compactness
+   (inter-player distances) and space control (Voronoi diagrams) for the
+   phase, saving both as CSVs.
 
 ## Local development
 
@@ -124,3 +130,25 @@ from outfield players:
   not colour — since `TrackingPipeline.run` calls it automatically after
   `resolve_track_team_ids` whenever a `goalkeeper` class is present (a no-op
   otherwise).
+
+Two generic spatial-analysis primitives, deliberately not tied to one phase
+(the build-up phase analysis will reuse the centroid/stretch machinery too):
+
+- **`compactness.py`**: `compute_frame_compactness` takes one team's (x, y)
+  positions in a single frame and returns mean pairwise inter-player
+  distance, "stretch index" (mean distance from the team centroid), and the
+  formation's length/width extent. `compute_team_compactness` applies that
+  across every frame of a tracked clip for one `team_id`, returning a
+  per-frame time series DataFrame - goalkeepers excluded by default, since
+  they'd distort an outfield defensive-line metric.
+- **`voronoi.py`**: `pitch_voronoi_cells` tessellates the pitch by a set of
+  player positions (`scipy.spatial.Voronoi`, with dummy points added far
+  outside the pitch so every region comes out bounded, then each cell is
+  clipped to the actual pitch rectangle via `shapely`) - the standard
+  simplified "space control" model in tactical analysis: the pitch area
+  closer to a player than to anyone else is credited to them. It ignores
+  player speed/orientation/reaction time, unlike more advanced pitch-control
+  models, but is a well-established first-order approximation.
+  `compute_space_control` applies this across every frame of a tracked clip,
+  returning each team's total controlled area (m²) per frame; `plot_voronoi`
+  draws the cells onto a `draw_pitch()` axes, coloured by team.

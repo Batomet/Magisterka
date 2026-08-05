@@ -1,4 +1,5 @@
 from .calibration import PITCH_LANDMARKS_M, PitchCalibrator
+from .compactness import compute_frame_compactness, compute_team_compactness
 from .config import (
     PITCH_LENGTH_M,
     PITCH_WIDTH_M,
@@ -26,6 +27,13 @@ from .team import (
 )
 from .tracking import PlayerTracker, TrackedObject
 from .video_io import VideoFrames, list_videos, mount_drive
+from .voronoi import (
+    compute_space_control,
+    pitch_voronoi_cells,
+    plot_voronoi,
+    team_space_control,
+    voronoi_cell_areas,
+)
 
 __all__ = [
     "PitchCalibrator",
@@ -57,4 +65,11 @@ __all__ = [
     "VideoFrames",
     "list_videos",
     "mount_drive",
+    "compute_frame_compactness",
+    "compute_team_compactness",
+    "pitch_voronoi_cells",
+    "voronoi_cell_areas",
+    "team_space_control",
+    "compute_space_control",
+    "plot_voronoi",
 ]
