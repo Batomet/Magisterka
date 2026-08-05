@@ -1,9 +1,9 @@
-import os
 from typing import Optional, Tuple
 
 import numpy as np
 from ultralytics import YOLO
 
+from ._weights import download_from_gdrive
 from .calibration import PitchCalibrator
 from .config import (
     CENTRE_CIRCLE_RADIUS_M,
@@ -24,21 +24,10 @@ PITCH_KEYPOINT_WEIGHTS_GDRIVE_ID = "1Ma5Kt86tgpdjCTKfum79YMgNnSjcoOyf"
 
 
 def download_pitch_keypoint_weights(destination: str) -> str:
-    """Downloads the pretrained pitch-keypoint weights to `destination` via
-    gdown, skipping the download if the file is already there - point
-    `destination` at a path on Drive to avoid re-downloading every Colab
+    """Downloads the pretrained pitch-keypoint weights to `destination` -
+    point it at a path on Drive to avoid re-downloading every Colab
     session."""
-    if os.path.exists(destination):
-        return destination
-    try:
-        import gdown
-    except ImportError as exc:
-        raise ImportError(
-            "pip install gdown to download the pretrained pitch-keypoint weights."
-        ) from exc
-    os.makedirs(os.path.dirname(destination) or ".", exist_ok=True)
-    gdown.download(id=PITCH_KEYPOINT_WEIGHTS_GDRIVE_ID, output=destination, quiet=False)
-    return destination
+    return download_from_gdrive(PITCH_KEYPOINT_WEIGHTS_GDRIVE_ID, destination)
 
 
 def pitch_keypoint_template(

@@ -27,6 +27,13 @@ class PlayerTracker:
     Detections come from a YOLO model; identity association across frames is
     delegated to ByteTrack via Ultralytics' built-in `bytetrack.yaml` tracker
     config, rather than reimplementing the association logic from scratch.
+
+    Uses a COCO-pretrained checkpoint by default (`yolov8n.pt`; class 0 =
+    person, class 32 = sports ball). Point `weights` at the specialized
+    checkpoint from `pitchvision.detection.download_player_detection_weights`
+    for a model that also tells players/goalkeepers/referees apart, and pass
+    `classes=pitchvision.config.SPORTS_DETECTION_CLASSES` (or `None`) - its
+    class ids don't match the COCO ones this class defaults to.
     """
 
     def __init__(
@@ -35,15 +42,15 @@ class PlayerTracker:
         confidence: float = 0.25,
         device: Optional[str] = None,
         tracker_config: str = "bytetrack.yaml",
+        classes: Optional[Sequence[int]] = DETECTION_CLASSES,
     ):
         self.model = YOLO(weights)
         self.confidence = confidence
         self.device = device
         self.tracker_config = tracker_config
+        self.classes = classes
 
-    def track_video(
-        self, source: str, classes: Sequence[int] = DETECTION_CLASSES
-    ) -> Iterator[Tuple[np.ndarray, List[TrackedObject]]]:
+    def track_video(self, source: str) -> Iterator[Tuple[np.ndarray, List[TrackedObject]]]:
         """Yields, for every frame in `source`, that frame (BGR, as decoded by
         Ultralytics) alongside the list of tracked objects - the frame is
         needed by anything that reads pixel data at a tracked box, such as
@@ -51,7 +58,7 @@ class PlayerTracker:
         stream = self.model.track(
             source=source,
             tracker=self.tracker_config,
-            classes=list(classes),
+            classes=list(self.classes) if self.classes is not None else None,
             conf=self.confidence,
             device=self.device,
             persist=True,

@@ -19,6 +19,23 @@ COCO_PERSON_CLASS_ID = 0
 COCO_BALL_CLASS_ID = 32
 DETECTION_CLASSES = (COCO_PERSON_CLASS_ID, COCO_BALL_CLASS_ID)
 
+# Class ids for the specialized `football-player-detection.pt` checkpoint
+# (see pitchvision.detection.download_player_detection_weights) - a 4-class
+# model trained specifically to tell players, goalkeepers, and referees
+# apart, unlike the generic COCO `person` class above. These ids are unrelated
+# to the COCO ones and only apply when a detector/tracker is pointed at that
+# checkpoint's weights.
+SPORTS_BALL_CLASS_ID = 0
+SPORTS_GOALKEEPER_CLASS_ID = 1
+SPORTS_PLAYER_CLASS_ID = 2
+SPORTS_REFEREE_CLASS_ID = 3
+SPORTS_DETECTION_CLASSES = (
+    SPORTS_BALL_CLASS_ID,
+    SPORTS_GOALKEEPER_CLASS_ID,
+    SPORTS_PLAYER_CLASS_ID,
+    SPORTS_REFEREE_CLASS_ID,
+)
+
 
 @dataclass
 class DriveConfig:

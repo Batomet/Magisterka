@@ -17,9 +17,10 @@ repeatability, static-to-dynamic transition timing).
 
 ```
 src/pitchvision/       Core Python package
-  config.py             Pitch dimensions, COCO class ids, Drive folder config
+  config.py             Pitch dimensions, detector class ids, Drive folder config
   video_io.py            Drive mounting, video listing, frame iteration
-  detection.py           YOLOv8 wrapper (player + ball detection)
+  detection.py           YOLOv8 wrapper (player + ball detection); specialized 4-class weights download
+  _weights.py             Shared public-Google-Drive checkpoint download helper
   tracking.py             ByteTrack-based multi-object tracking
   calibration.py          Homography pitch calibration (pixel <-> metric pitch coords)
   pitch_keypoints.py       Automatic calibration via a pretrained pitch-keypoint model
@@ -59,11 +60,18 @@ at the end of `00_pipeline_demo.ipynb`.
 pip install -e .
 ```
 
-Ball detection uses the COCO `sports ball` class from a generic pretrained
-YOLOv8 checkpoint; small, fast-moving broadcast footballs are hard for a
-generic model to pick up reliably; swap in a football-specific fine-tuned
-checkpoint (`PlayerBallDetector(weights=...)` / `PlayerTracker(weights=...)`)
-once one is trained.
+`PlayerBallDetector`/`PlayerTracker` default to a generic COCO-pretrained
+YOLOv8 checkpoint (`yolov8n.pt`; class 0 = person, class 32 = sports ball) -
+simple, no extra download, but it can't tell players/goalkeepers/referees
+apart and is unreliable on the ball. For better detection and team
+classification, point `weights` at the specialized
+`football-player-detection.pt` checkpoint instead (also from
+[roboflow/sports](https://github.com/roboflow/sports); a 4-class model: ball,
+goalkeeper, player, referee), downloaded once via
+`download_player_detection_weights` — same public-Google-Drive, no-account
+pattern as the pitch-keypoint weights — and pass
+`classes=SPORTS_DETECTION_CLASSES` (its class ids are unrelated to the COCO
+ones).
 
 Pitch calibration is homography-based (`PitchCalibrator`, `cv2.findHomography`
 under the hood), fit from >=4 pixel<->pitch point correspondences. Two ways
@@ -90,12 +98,29 @@ Team classification (`team.py`) is a classical colour-clustering approach:
 to a robust (hue, saturation) signature (torso region only, pitch-grass
 pixels masked out, brightness/value ignored since it swings with shadows);
 `TeamClassifier` fits a 2-cluster KMeans over those signatures, and
-`TrackingPipeline` (when given a fitted classifier) predicts a `team_id` per
-person detection, then collapses each track's noisy per-frame predictions
-to one stable majority-vote label via `resolve_track_team_ids`. It's
-lightweight (no extra model download, unlike embedding-based classifiers
-used elsewhere in the sports-analytics community) but has two known limits:
-cluster ids (`0`/`1`) aren't team-identity aware, and it can't structurally
-separate a referee/goalkeeper from outfield players since the detector only
-has a generic COCO `person` class — see the `TeamClassifier` docstring for
-workarounds.
+`TrackingPipeline` (when given a fitted classifier) predicts a `team_id` for
+detections whose class is in `team_eligible_class_names`, then collapses
+each track's noisy per-frame predictions to one stable majority-vote label
+via `resolve_track_team_ids`. It's lightweight — no extra model beyond the
+detector checkpoint, unlike embedding-based classifiers used elsewhere in
+the sports-analytics community — but cluster ids (`0`/`1`) still aren't
+team-identity aware; check `TeamClassifier.cluster_swatches` to see which is
+which.
+
+Referees and goalkeepers need the specialized player detector above to
+resolve properly, since jersey-colour clustering alone can't separate them
+from outfield players:
+- With the generic COCO model (everything is class `person`), a referee's or
+  goalkeeper's kit colour just gets assigned to whichever of the 2 clusters
+  is nearest — wrong more often than not, since both conventionally wear a
+  third, distinct colour. Workarounds: set `n_clusters=3` and treat the
+  extra cluster as "other", or manually reassign known referee/goalkeeper
+  track_ids after classification.
+- With the specialized model (classes `player`/`goalkeeper`/`referee`/`ball`),
+  fit `TeamClassifier` only on `class_name == "player"` samples (the default
+  `collect_jersey_colors` behaviour) so referees never enter the colour fit
+  at all and keep `team_id = None` throughout. Goalkeepers are then resolved
+  by `resolve_goalkeeper_team_ids` — nearest team centroid by pitch position,
+  not colour — since `TrackingPipeline.run` calls it automatically after
+  `resolve_track_team_ids` whenever a `goalkeeper` class is present (a no-op
+  otherwise).
