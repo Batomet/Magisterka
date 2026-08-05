@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Sequence
+from typing import Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 from ultralytics import YOLO
@@ -43,8 +43,11 @@ class PlayerTracker:
 
     def track_video(
         self, source: str, classes: Sequence[int] = DETECTION_CLASSES
-    ) -> Iterator[List[TrackedObject]]:
-        """Yields, for every frame in `source`, the list of tracked objects."""
+    ) -> Iterator[Tuple[np.ndarray, List[TrackedObject]]]:
+        """Yields, for every frame in `source`, that frame (BGR, as decoded by
+        Ultralytics) alongside the list of tracked objects - the frame is
+        needed by anything that reads pixel data at a tracked box, such as
+        jersey-colour team classification, without re-decoding the video."""
         stream = self.model.track(
             source=source,
             tracker=self.tracker_config,
@@ -61,7 +64,7 @@ class PlayerTracker:
             objects: List[TrackedObject] = []
             if boxes.id is None:
                 # Tracker hasn't confirmed a stable ID for these detections yet.
-                yield objects
+                yield result.orig_img, objects
                 continue
             for xyxy, track_id, conf, cls in zip(
                 boxes.xyxy.cpu().numpy(),
@@ -78,4 +81,4 @@ class PlayerTracker:
                         class_name=names[cls],
                     )
                 )
-            yield objects
+            yield result.orig_img, objects

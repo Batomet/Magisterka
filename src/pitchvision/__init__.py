@@ -8,6 +8,12 @@ from .pitch_keypoints import (
     download_pitch_keypoint_weights,
     pitch_keypoint_template,
 )
+from .team import (
+    TeamClassifier,
+    collect_jersey_colors,
+    extract_jersey_color,
+    resolve_track_team_ids,
+)
 from .tracking import PlayerTracker, TrackedObject
 from .video_io import VideoFrames, list_videos, mount_drive
 
@@ -25,6 +31,10 @@ __all__ = [
     "PitchKeypointDetector",
     "download_pitch_keypoint_weights",
     "pitch_keypoint_template",
+    "TeamClassifier",
+    "collect_jersey_colors",
+    "extract_jersey_color",
+    "resolve_track_team_ids",
     "PlayerTracker",
     "TrackedObject",
     "VideoFrames",

@@ -24,19 +24,20 @@ src/pitchvision/       Core Python package
   calibration.py          Homography pitch calibration (pixel <-> metric pitch coords)
   pitch_keypoints.py       Automatic calibration via a pretrained pitch-keypoint model
   pitch.py                 Top-down pitch drawing (matplotlib)
-  pipeline.py              Ties detection+tracking+calibration into a track DataFrame
+  team.py                  Jersey-colour team classification (KMeans)
+  pipeline.py              Ties detection+tracking+calibration+team classification into a track DataFrame
 notebooks/
   00_pipeline_demo.ipynb   Colab notebook: run the core pipeline end-to-end on a sample clip
 ```
 
 ## Status
 
-Implemented: detection, tracking, and pitch calibration core (this is the
-shared foundation all three phase analyses build on).
+Implemented: detection, tracking, pitch calibration, and team classification
+— the shared foundation all three phase analyses build on.
 
-Not yet implemented: team classification, and the three phase-specific
-analyses themselves (goal-scoring opportunity, build-up, set pieces) —
-see the "Next steps" cell at the end of `00_pipeline_demo.ipynb`.
+Not yet implemented: the three phase-specific analyses themselves
+(goal-scoring opportunity, build-up, set pieces) — see the "Next steps" cell
+at the end of `00_pipeline_demo.ipynb`.
 
 ## Usage (Google Colab)
 
@@ -47,8 +48,10 @@ see the "Next steps" cell at the end of `00_pipeline_demo.ipynb`.
 3. Run the cells top to bottom: they clone this repo, install dependencies,
    mount Drive, sanity-check detection, calibrate the pitch homography
    automatically from detected pitch keypoints (manual point-picking is
-   available as a fallback), run the full tracking pipeline, and save the
-   resulting per-frame pitch-coordinate tracks as a CSV back to Drive.
+   available as a fallback), cluster players into two teams by jersey
+   colour, run the full tracking pipeline with team labels attached, and
+   save the resulting per-frame pitch-coordinate tracks as a CSV back to
+   Drive.
 
 ## Local development
 
@@ -81,3 +84,18 @@ to get those correspondences:
 - **Manual fallback (`calibration.PITCH_LANDMARKS_M`)**: supply pixel<->pitch
   matches by hand for clips where automatic detection can't find enough
   confident keypoints (heavy occlusion, an unusual crop).
+
+Team classification (`team.py`) is a classical colour-clustering approach:
+`collect_jersey_colors` samples player crops across a clip and reduces each
+to a robust (hue, saturation) signature (torso region only, pitch-grass
+pixels masked out, brightness/value ignored since it swings with shadows);
+`TeamClassifier` fits a 2-cluster KMeans over those signatures, and
+`TrackingPipeline` (when given a fitted classifier) predicts a `team_id` per
+person detection, then collapses each track's noisy per-frame predictions
+to one stable majority-vote label via `resolve_track_team_ids`. It's
+lightweight (no extra model download, unlike embedding-based classifiers
+used elsewhere in the sports-analytics community) but has two known limits:
+cluster ids (`0`/`1`) aren't team-identity aware, and it can't structurally
+separate a referee/goalkeeper from outfield players since the detector only
+has a generic COCO `person` class — see the `TeamClassifier` docstring for
+workarounds.
