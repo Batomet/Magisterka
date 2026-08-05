@@ -101,9 +101,17 @@ to get those correspondences:
 
 Team classification (`team.py`) is a classical colour-clustering approach:
 `collect_jersey_colors` samples player crops across a clip and reduces each
-to a robust (hue, saturation) signature (torso region only, pitch-grass
-pixels masked out, brightness/value ignored since it swings with shadows);
-`TeamClassifier` fits a 2-cluster KMeans over those signatures, and
+to a 3-feature signature via `extract_jersey_color` - median hue, median
+saturation (torso region only, pitch-grass pixels masked out), and the
+*standard deviation* of value/brightness. Median hue/saturation alone breaks
+down for a monochrome or striped kit (e.g. black/white): near-black and
+near-white pixels both have near-zero saturation and essentially undefined
+hue, so that team's colour signal is weak - the value-std feature captures
+"how patterned/high-contrast is this kit" instead, which a solid-coloured
+kit doesn't have. `TeamClassifier` standardises all three features to zero
+mean/unit variance (`sklearn.preprocessing.StandardScaler`) before fitting a
+2-cluster KMeans, so no single feature's numeric scale dominates the
+distance metric, and
 `TrackingPipeline` (when given a fitted classifier) predicts a `team_id` for
 detections whose class is in `team_eligible_class_names`, then collapses
 each track's noisy per-frame predictions to one stable majority-vote label

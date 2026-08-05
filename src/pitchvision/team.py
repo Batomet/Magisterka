@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 from .detection import PlayerBallDetector
 from .video_io import VideoFrames
@@ -20,15 +21,21 @@ DEFAULT_TEAM_ELIGIBLE_CLASS_NAMES = ("person", "player")
 def extract_jersey_color(
     frame: np.ndarray, bbox: np.ndarray, upper_fraction: float = 0.5
 ) -> Optional[np.ndarray]:
-    """A robust colour signature for a player's jersey: the median (hue,
-    saturation) of the torso crop (the upper `upper_fraction` of the
-    bounding box, to avoid shorts/socks and the grass beneath the player's
-    feet), with pitch-grass-coloured pixels masked out.
+    """A colour signature for a player's jersey, as a 3-element feature
+    vector: (median hue, median saturation, standard deviation of value)
+    over the torso crop (the upper `upper_fraction` of the bounding box, to
+    avoid shorts/socks and the grass beneath the player's feet), with
+    pitch-grass-coloured pixels masked out.
 
-    Value/brightness is deliberately dropped - it varies a lot with shadows
-    and lighting - while hue and saturation are a much more stable signature
-    of a specific kit colour. Returns None if the box is degenerate or ends
-    up with no usable pixels.
+    Median value/brightness is deliberately excluded from the first two
+    features - it varies a lot with shadows and lighting - but its *spread*
+    (the third feature) is kept, because it's the only signal that separates
+    a solid-coloured kit from a monochrome or striped one (e.g. black/white):
+    near-black and near-white pixels both have near-zero saturation and
+    essentially undefined hue, so a striped kit's (hue, saturation) alone is
+    weak and noisy, but its high contrast (large value std) is not - a solid
+    kit has a low value std by comparison. Returns None if the box is
+    degenerate or ends up with no usable pixels.
     """
     x1, y1, x2, y2 = np.asarray(bbox, dtype=int)
     x1, y1 = max(x1, 0), max(y1, 0)
@@ -46,7 +53,7 @@ def extract_jersey_color(
     if len(kept) < 10:
         kept = hsv  # the mask removed almost everything; fall back to the full crop
 
-    return np.median(kept[:, :2], axis=0)
+    return np.array([np.median(kept[:, 0]), np.median(kept[:, 1]), np.std(kept[:, 2])])
 
 
 def collect_jersey_colors(
@@ -92,10 +99,12 @@ def collect_jersey_colors(
 class TeamClassifier:
     """Splits player detections into `n_clusters` groups by jersey colour.
 
-    A classical colour-clustering approach (median hue/saturation of the
-    torso crop + KMeans) - lightweight enough to run in a Colab session with
-    no extra model download, unlike embedding-based classifiers used
-    elsewhere in the sports-analytics community.
+    A classical colour-clustering approach (`extract_jersey_color`'s 3-feature
+    signature + KMeans, features standardised to zero mean/unit variance
+    before fitting so no single feature's numeric scale dominates the
+    distance metric) - lightweight enough to run in a Colab session with no
+    extra model download, unlike embedding-based classifiers used elsewhere
+    in the sports-analytics community.
 
     It is not team-*identity* aware: after fitting, cluster labels are
     arbitrary integers (0, 1, ...); match them to "home"/"away" by eye using
@@ -120,6 +129,7 @@ class TeamClassifier:
     def __init__(self, n_clusters: int = 2, random_state: int = 0):
         self.n_clusters = n_clusters
         self.random_state = random_state
+        self._scaler: Optional[StandardScaler] = None
         self._kmeans: Optional[KMeans] = None
 
     def fit(self, colors: np.ndarray) -> "TeamClassifier":
@@ -130,26 +140,34 @@ class TeamClassifier:
                 f"{self.n_clusters} clusters, got {len(colors)}. Lower `stride` "
                 "or widen the sampling window in collect_jersey_colors."
             )
+        self._scaler = StandardScaler()
+        scaled = self._scaler.fit_transform(colors)
         self._kmeans = KMeans(n_clusters=self.n_clusters, n_init=10, random_state=self.random_state)
-        self._kmeans.fit(colors)
+        self._kmeans.fit(scaled)
         return self
 
     def predict(self, frame: np.ndarray, bbox: np.ndarray) -> Optional[int]:
-        if self._kmeans is None:
+        if self._kmeans is None or self._scaler is None:
             raise RuntimeError("Call TeamClassifier.fit(...) before predict(...).")
         color = extract_jersey_color(frame, bbox)
         if color is None:
             return None
-        return int(self._kmeans.predict(color.reshape(1, -1))[0])
+        scaled = self._scaler.transform(color.reshape(1, -1))
+        return int(self._kmeans.predict(scaled)[0])
 
     @property
     def cluster_swatches(self) -> List[Tuple[int, int, int]]:
-        """RGB colour swatches for each cluster centre - a quick visual check
-        of which cluster id corresponds to which team's kit colour."""
-        if self._kmeans is None:
+        """RGB colour swatches for each cluster centre's (hue, saturation) -
+        a quick visual check of which cluster id corresponds to which team's
+        kit colour. The value-std feature isn't visualisable as a colour, so
+        it's dropped here (a fixed brightness is used instead); a swatch
+        that looks like a washed-out grey for a team you know wears a
+        strongly patterned kit is expected and not a bug."""
+        if self._kmeans is None or self._scaler is None:
             raise RuntimeError("Call TeamClassifier.fit(...) before cluster_swatches.")
+        centers = self._scaler.inverse_transform(self._kmeans.cluster_centers_)
         swatches = []
-        for hue, sat in self._kmeans.cluster_centers_:
+        for hue, sat, _value_std in centers:
             hsv_pixel = np.uint8([[[np.clip(hue, 0, 179), np.clip(sat, 0, 255), 200]]])
             bgr = cv2.cvtColor(hsv_pixel, cv2.COLOR_HSV2BGR)[0, 0]
             swatches.append((int(bgr[2]), int(bgr[1]), int(bgr[0])))
