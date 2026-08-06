@@ -26,24 +26,28 @@ src/pitchvision/       Core Python package
   pitch_keypoints.py       Automatic calibration via a pretrained pitch-keypoint model
   pitch.py                 Top-down pitch drawing (matplotlib)
   team.py                  Jersey-colour team classification (KMeans)
-  compactness.py           Inter-player-distance compactness metrics (generic, reused across phases)
+  compactness.py           Inter-player-distance/centroid compactness metrics (generic, reused across phases)
   voronoi.py                Voronoi-tessellation space control (generic, reused across phases)
+  convex_hull.py             Effective Playing Space via Convex Hull (generic, reused across phases)
   pipeline.py              Ties detection+tracking+calibration+team classification into a track DataFrame
 notebooks/
   00_pipeline_demo.ipynb                 Colab notebook: run the core pipeline end-to-end on a sample clip
   01_goal_scoring_opportunity.ipynb       Defensive compactness + Voronoi space control on a Goals clip
+  02_build_up_phase.ipynb                 Effective Playing Space + formation stretching on a BuildingAction clip
 ```
 
 ## Status
 
 Implemented: detection, tracking, pitch calibration, team classification —
-the shared foundation all three phase analyses build on — plus the first
-phase-specific analysis, goal-scoring opportunity (defensive compactness +
-Voronoi space control, `01_goal_scoring_opportunity.ipynb`).
+the shared foundation all three phase analyses build on — plus two of the
+three phase-specific analyses: goal-scoring opportunity (defensive
+compactness + Voronoi space control, `01_goal_scoring_opportunity.ipynb`)
+and build-up (Effective Playing Space via Convex Hull + formation-centroid
+stretching, `02_build_up_phase.ipynb`).
 
-Not yet implemented: the other two phase-specific analyses (build-up,
-set pieces) — see the "Next steps" cell at the end of
-`01_goal_scoring_opportunity.ipynb`.
+Not yet implemented: set pieces / breaks in play (positional-structure
+repeatability, static-to-dynamic transition timing) — see the "Next steps"
+cell at the end of `01_goal_scoring_opportunity.ipynb`.
 
 ## Usage (Google Colab)
 
@@ -54,11 +58,12 @@ set pieces) — see the "Next steps" cell at the end of
    sanity-check the pipeline on a clip: detection, automatic pitch
    calibration (manual point-picking as a fallback), team classification,
    and the full tracking pipeline, saved as a CSV back to Drive.
-3. Then open `notebooks/01_goal_scoring_opportunity.ipynb` for the first
-   phase-specific analysis: it re-runs the same setup condensed into one
-   section on a clip from `Goals`, then computes defensive compactness
-   (inter-player distances) and space control (Voronoi diagrams) for the
-   phase, saving both as CSVs.
+3. Then open `notebooks/01_goal_scoring_opportunity.ipynb` (defensive
+   compactness + Voronoi space control on a `Goals` clip) and/or
+   `notebooks/02_build_up_phase.ipynb` (Effective Playing Space + formation
+   stretching on a `BuildingAction` clip) - each re-runs the same setup
+   condensed into one section, applies its own analysis, and saves the
+   results as CSVs.
 
 ## Local development
 
@@ -169,8 +174,9 @@ assigned cluster) makes the difference visible - two separated blobs of
 roughly similar size versus one tight blob plus a handful of scattered
 outliers.
 
-Two generic spatial-analysis primitives, deliberately not tied to one phase
-(the build-up phase analysis will reuse the centroid/stretch machinery too):
+Three generic spatial-analysis primitives, deliberately not tied to one
+phase - `compactness.py` and `voronoi.py` are shared by the goal-scoring
+opportunity analysis, `compactness.py` and `convex_hull.py` by build-up:
 
 - **`compactness.py`**: `compute_frame_compactness` takes one team's (x, y)
   positions in a single frame and returns mean pairwise inter-player
@@ -178,7 +184,11 @@ Two generic spatial-analysis primitives, deliberately not tied to one phase
   formation's length/width extent. `compute_team_compactness` applies that
   across every frame of a tracked clip for one `team_id`, returning a
   per-frame time series DataFrame - goalkeepers excluded by default, since
-  they'd distort an outfield defensive-line metric.
+  they'd distort an outfield defensive-line metric. `compute_centroid_separation`
+  complements that with the distance *between* two teams' centroids per
+  frame (length-axis/width-axis/overall) - a team's own stretch describes
+  its internal shape, this describes how far it's been pulled from the
+  opposition.
 - **`voronoi.py`**: `pitch_voronoi_cells` tessellates the pitch by a set of
   player positions (`scipy.spatial.Voronoi`, with dummy points added far
   outside the pitch so every region comes out bounded, then each cell is
@@ -190,10 +200,24 @@ Two generic spatial-analysis primitives, deliberately not tied to one phase
   `compute_space_control` applies this across every frame of a tracked clip,
   returning each team's total controlled area (m²) per frame; `plot_voronoi`
   draws the cells onto a `draw_pitch()` axes, coloured by team;
-  `save_voronoi_frames` batch-renders one PNG per frame to a folder. All of
-  `compactness.py`/`voronoi.py`'s DataFrame-level functions work on *any*
-  DataFrame shaped like `TrackingPipeline.run()`'s output (`frame`,
-  `class_name`, `team_id`, `pitch_x`, `pitch_y` columns at minimum) - a CSV
-  you build by hand, or reload from a previous run via `pd.read_csv(...)`,
-  works identically to a live pipeline result, no detection/tracking/
-  calibration required to regenerate diagrams from data you already have.
+  `save_voronoi_frames` batch-renders one PNG per frame to a folder.
+- **`convex_hull.py`**: `convex_hull_polygon` (via `shapely.geometry.MultiPoint`)
+  is the "Effective Playing Space" primitive - the smallest polygon
+  containing a set of positions. `compute_team_convex_hull` gives one
+  team's hull area/perimeter per frame (goalkeepers excluded by default,
+  same reasoning as `compactness.py`); `compute_combined_convex_hull` does
+  the same over *both* teams' players together, the classical Frencken et
+  al. (2011) "Effective Playing Space" definition - it can shrink even
+  while one team's own hull grows, if both teams move into overlapping
+  space rather than spreading apart, so the per-team and combined figures
+  answer different questions. `plot_convex_hull` draws a hull outline onto
+  a `draw_pitch()` axes; `save_convex_hull_frames` batch-renders one PNG per
+  frame to a folder, mirroring `voronoi.save_voronoi_frames`.
+
+All of these modules' DataFrame-level functions work on *any* DataFrame
+shaped like `TrackingPipeline.run()`'s output (`frame`, `class_name`,
+`team_id`, `pitch_x`, `pitch_y` columns at minimum) - a CSV you build by
+hand, or reload from a previous run via `pd.read_csv(...)`, works
+identically to a live pipeline result, no detection/tracking/calibration
+required to regenerate diagrams or recompute metrics from data you already
+have.

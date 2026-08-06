@@ -1,5 +1,9 @@
 from .calibration import PITCH_LANDMARKS_M, PitchCalibrator
-from .compactness import compute_frame_compactness, compute_team_compactness
+from .compactness import (
+    compute_centroid_separation,
+    compute_frame_compactness,
+    compute_team_compactness,
+)
 from .config import (
     PITCH_LENGTH_M,
     PITCH_WIDTH_M,
@@ -9,6 +13,14 @@ from .config import (
     SPORTS_PLAYER_CLASS_ID,
     SPORTS_REFEREE_CLASS_ID,
     DriveConfig,
+)
+from .convex_hull import (
+    compute_combined_convex_hull,
+    compute_frame_convex_hull,
+    compute_team_convex_hull,
+    convex_hull_polygon,
+    plot_convex_hull,
+    save_convex_hull_frames,
 )
 from .detection import Detection, PlayerBallDetector, download_player_detection_weights
 from .pipeline import TrackingPipeline
@@ -74,10 +86,17 @@ __all__ = [
     "mount_drive",
     "compute_frame_compactness",
     "compute_team_compactness",
+    "compute_centroid_separation",
     "pitch_voronoi_cells",
     "voronoi_cell_areas",
     "team_space_control",
     "compute_space_control",
     "plot_voronoi",
     "save_voronoi_frames",
+    "convex_hull_polygon",
+    "compute_frame_convex_hull",
+    "compute_team_convex_hull",
+    "compute_combined_convex_hull",
+    "plot_convex_hull",
+    "save_convex_hull_frames",
 ]
