@@ -189,4 +189,11 @@ Two generic spatial-analysis primitives, deliberately not tied to one phase
   models, but is a well-established first-order approximation.
   `compute_space_control` applies this across every frame of a tracked clip,
   returning each team's total controlled area (m²) per frame; `plot_voronoi`
-  draws the cells onto a `draw_pitch()` axes, coloured by team.
+  draws the cells onto a `draw_pitch()` axes, coloured by team;
+  `save_voronoi_frames` batch-renders one PNG per frame to a folder. All of
+  `compactness.py`/`voronoi.py`'s DataFrame-level functions work on *any*
+  DataFrame shaped like `TrackingPipeline.run()`'s output (`frame`,
+  `class_name`, `team_id`, `pitch_x`, `pitch_y` columns at minimum) - a CSV
+  you build by hand, or reload from a previous run via `pd.read_csv(...)`,
+  works identically to a live pipeline result, no detection/tracking/
+  calibration required to regenerate diagrams from data you already have.

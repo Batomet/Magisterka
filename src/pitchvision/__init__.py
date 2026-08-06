@@ -34,6 +34,7 @@ from .voronoi import (
     compute_space_control,
     pitch_voronoi_cells,
     plot_voronoi,
+    save_voronoi_frames,
     team_space_control,
     voronoi_cell_areas,
 )
@@ -78,4 +79,5 @@ __all__ = [
     "team_space_control",
     "compute_space_control",
     "plot_voronoi",
+    "save_voronoi_frames",
 ]

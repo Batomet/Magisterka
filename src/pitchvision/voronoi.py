@@ -1,5 +1,7 @@
+import os
 from typing import Dict, Iterable, List, Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.axes import Axes
@@ -8,6 +10,7 @@ from scipy.spatial import Voronoi
 from shapely.geometry import Polygon, box
 
 from .config import PITCH_LENGTH_M, PITCH_WIDTH_M
+from .pitch import draw_pitch
 
 
 def pitch_voronoi_cells(
@@ -133,3 +136,71 @@ def plot_voronoi(
         ax.add_patch(
             MplPolygon(coords, closed=True, facecolor=color, edgecolor="white", linewidth=0.5, alpha=alpha)
         )
+
+
+def save_voronoi_frames(
+    tracks_df: pd.DataFrame,
+    output_dir: str,
+    frames: Optional[Iterable[int]] = None,
+    stride: int = 1,
+    class_names: Iterable[str] = ("player", "goalkeeper", "person"),
+    team_colors: Optional[Dict[int, str]] = None,
+    filename_prefix: str = "voronoi_frame",
+) -> List[str]:
+    """Renders and saves a Voronoi space-control plot (pitch + coloured
+    cells + player dots) for a set of frames, one PNG per frame, to
+    `output_dir/{filename_prefix}_{frame:05d}.png`. Returns the list of
+    saved file paths, in frame order.
+
+    Works on *any* DataFrame shaped like `TrackingPipeline.run()`'s output -
+    it only needs `frame`, `class_name`, `team_id`, `pitch_x`, `pitch_y`
+    columns - so a CSV you built by hand, or loaded back from a previous
+    run via `pd.read_csv(...)`, works exactly the same as a live pipeline
+    result. No need to re-run detection/tracking just to regenerate plots.
+
+    `frames`: which frame numbers to render. If not given, defaults to every
+    frame in `tracks_df` that has >=2 players and >=2 resolved teams (i.e.
+    every frame `compute_space_control` would also produce a row for),
+    subsampled by `stride` (every `stride`-th of those, in order) - a full
+    clip can have hundreds of frames, so `stride` keeps this to a manageable
+    number of images by default (stride=1 renders every eligible frame).
+    """
+    class_names = set(class_names)
+    eligible = tracks_df[
+        tracks_df["class_name"].isin(class_names) & tracks_df["team_id"].notna()
+    ]
+
+    if frames is None:
+        candidate_frames = sorted(
+            frame
+            for frame, group in eligible.groupby("frame")
+            if len(group) >= 2 and group["team_id"].nunique() >= 2
+        )
+        frames = candidate_frames[::stride]
+
+    os.makedirs(output_dir, exist_ok=True)
+    saved_paths = []
+    for frame in frames:
+        frame_rows = eligible[eligible["frame"] == frame]
+        if len(frame_rows) < 2 or frame_rows["team_id"].nunique() < 2:
+            continue
+
+        positions = frame_rows[["pitch_x", "pitch_y"]].to_numpy()
+        team_ids = frame_rows["team_id"].to_numpy()
+        polygons = pitch_voronoi_cells(positions)
+
+        ax = draw_pitch()
+        plot_voronoi(ax, polygons, team_ids, team_colors=team_colors)
+        for (x, y), team_id in zip(positions, team_ids):
+            ax.scatter(
+                x, y, color=(team_colors or {}).get(team_id, "gray"),
+                edgecolors="black", s=60, zorder=3,
+            )
+        ax.set_title(f"Space control at frame {int(frame)}")
+
+        path = os.path.join(output_dir, f"{filename_prefix}_{int(frame):05d}.png")
+        ax.figure.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close(ax.figure)
+        saved_paths.append(path)
+
+    return saved_paths
