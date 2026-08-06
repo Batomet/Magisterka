@@ -106,16 +106,28 @@ to get those correspondences:
 Team classification (`team.py`) is a classical colour-clustering approach:
 `collect_jersey_colors` samples player crops across a clip and reduces each
 to a 3-feature signature via `extract_jersey_color` - median hue, median
-saturation (torso region only, pitch-grass pixels masked out), and the
-*standard deviation* of value/brightness. Median hue/saturation alone breaks
-down for a monochrome or striped kit (e.g. black/white): near-black and
-near-white pixels both have near-zero saturation and essentially undefined
-hue, so that team's colour signal is weak - the value-std feature captures
-"how patterned/high-contrast is this kit" instead, which a solid-coloured
-kit doesn't have. `TeamClassifier` standardises all three features to zero
-mean/unit variance (`sklearn.preprocessing.StandardScaler`) before fitting a
-2-cluster KMeans, so no single feature's numeric scale dominates the
-distance metric, and
+saturation (over a *tight, central* torso crop - see `_torso_crop`: a
+vertical band skipping the head/neck and everything below the chest, trimmed
+on both horizontal edges - with any remaining pitch-grass-coloured pixels
+masked out as a secondary safety net), and the *standard deviation* of
+value/brightness. The crop is deliberately tight rather than relying mainly
+on the grass-colour mask: detector boxes aren't pixel-tight, and on some
+pitches/lighting the grass renders yellowish-green - close enough in hue to
+a yellow kit that no hue-range filter can reliably tell them apart, so
+physically cropping away the background matters more than filtering it out
+after the fact. `top`/`bottom`/`horizontal_margin` are exposed as keyword
+arguments through `extract_jersey_color`, `collect_jersey_samples`, and
+`collect_jersey_colors` (as `**crop_kwargs`) for tuning per clip - use
+`plot_jersey_color_samples` (below) to see whether the defaults are still
+picking up background for a given clip's box tightness/camera distance.
+Median hue/saturation alone also breaks down for a monochrome or striped kit
+(e.g. black/white): near-black and near-white pixels both have near-zero
+saturation and essentially undefined hue, so that team's colour signal is
+weak - the value-std feature captures "how patterned/high-contrast is this
+kit" instead, which a solid-coloured kit doesn't have. `TeamClassifier`
+standardises all three features to zero mean/unit variance
+(`sklearn.preprocessing.StandardScaler`) before fitting a 2-cluster KMeans,
+so no single feature's numeric scale dominates the distance metric, and
 `TrackingPipeline` (when given a fitted classifier) predicts a `team_id` for
 detections whose class is in `team_eligible_class_names`, then collapses
 each track's noisy per-frame predictions to one stable majority-vote label

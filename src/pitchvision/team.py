@@ -19,26 +19,50 @@ from .video_io import VideoFrames
 DEFAULT_TEAM_ELIGIBLE_CLASS_NAMES = ("person", "player")
 
 
-def _torso_crop(frame: np.ndarray, bbox: np.ndarray, upper_fraction: float = 0.5) -> Optional[np.ndarray]:
-    """The upper `upper_fraction` of a bounding box's crop - avoids
-    shorts/socks and the grass beneath the player's feet. Returns None if the
-    box is degenerate (e.g. clipped fully outside the frame)."""
-    x1, y1, x2, y2 = np.asarray(bbox, dtype=int)
-    x1, y1 = max(x1, 0), max(y1, 0)
+def _torso_crop(
+    frame: np.ndarray,
+    bbox: np.ndarray,
+    top: float = 0.15,
+    bottom: float = 0.55,
+    horizontal_margin: float = 0.25,
+) -> Optional[np.ndarray]:
+    """A tight central patch of a bounding box's crop, targeting the chest -
+    a vertical band from `top` to `bottom` of the box height (skipping the
+    head/neck near the very top and everything below the torso), trimmed by
+    `horizontal_margin` on each side.
+
+    Detector boxes usually aren't pixel-tight around the visible player, and
+    a wider crop's edges can carry a real amount of background - which
+    matters a lot when the pitch's grass renders as yellowish-green (some
+    lighting/turf conditions do), close enough in hue to a yellow kit that a
+    coarse hue-range filter can't reliably tell "yellow kit" from "yellowish
+    grass" apart. A tight central crop reduces reliance on that filter by
+    physically containing far less background to begin with. Returns None if
+    the box is degenerate (e.g. clipped fully outside the frame)."""
+    x1, y1, x2, y2 = np.asarray(bbox, dtype=float)
+    x1, y1 = max(x1, 0.0), max(y1, 0.0)
     x2, y2 = max(x2, x1 + 1), max(y2, y1 + 1)
-    crop = frame[y1:y2, x1:x2]
+    w, h = x2 - x1, y2 - y1
+
+    cx1, cx2 = x1 + horizontal_margin * w, x2 - horizontal_margin * w
+    cy1, cy2 = y1 + top * h, y1 + bottom * h
+
+    crop = frame[int(cy1):int(cy2), int(cx1):int(cx2)]
     if crop.size == 0:
         return None
-    return crop[: max(1, int(crop.shape[0] * upper_fraction))]
+    return crop
 
 
-def extract_jersey_color(
-    frame: np.ndarray, bbox: np.ndarray, upper_fraction: float = 0.5
-) -> Optional[np.ndarray]:
+def extract_jersey_color(frame: np.ndarray, bbox: np.ndarray, **crop_kwargs) -> Optional[np.ndarray]:
     """A colour signature for a player's jersey, as a 3-element feature
     vector: (median hue, median saturation, standard deviation of value)
-    over the torso crop (the upper `upper_fraction` of the bounding box),
-    with pitch-grass-coloured pixels masked out.
+    over a tight torso crop (see `_torso_crop`), with any remaining
+    pitch-grass-coloured pixels masked out as a secondary safety net.
+
+    `**crop_kwargs` (`top`, `bottom`, `horizontal_margin`) are forwarded to
+    `_torso_crop` - tune these if the defaults crop too little (still
+    picking up background) or too much (barely any jersey pixels left) for a
+    given clip's box tightness and camera distance.
 
     Median value/brightness is deliberately excluded from the first two
     features - it varies a lot with shadows and lighting - but its *spread*
@@ -50,7 +74,7 @@ def extract_jersey_color(
     kit has a low value std by comparison. Returns None if the box is
     degenerate or ends up with no usable pixels.
     """
-    torso = _torso_crop(frame, bbox, upper_fraction)
+    torso = _torso_crop(frame, bbox, **crop_kwargs)
     if torso is None:
         return None
     hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV).reshape(-1, 3).astype(np.float64)
@@ -81,6 +105,7 @@ def collect_jersey_samples(
     class_names: Iterable[str] = DEFAULT_TEAM_ELIGIBLE_CLASS_NAMES,
     stride: int = 30,
     max_samples: int = 500,
+    **crop_kwargs,
 ) -> List[JerseySample]:
     """Samples every `stride`-th frame of a clip, detects players, and
     collects their jersey-colour signatures plus the crop each one came from
@@ -95,7 +120,8 @@ def collect_jersey_samples(
     whose *class name* is in `class_names` are kept. Using the specialized
     football-player-detection.pt checkpoint (class name "player") instead of
     the generic COCO "person" class keeps referees out of the training data,
-    giving a cleaner 2-cluster fit.
+    giving a cleaner 2-cluster fit. `**crop_kwargs` are forwarded to
+    `extract_jersey_color`/`_torso_crop` - see their docstrings.
     """
     class_names = set(class_names)
     frames = VideoFrames(video_path)
@@ -107,8 +133,8 @@ def collect_jersey_samples(
             for det in detector.detect(frame):
                 if det.class_name not in class_names:
                     continue
-                color = extract_jersey_color(frame, det.xyxy)
-                crop = _torso_crop(frame, det.xyxy)
+                color = extract_jersey_color(frame, det.xyxy, **crop_kwargs)
+                crop = _torso_crop(frame, det.xyxy, **crop_kwargs)
                 if color is not None and crop is not None:
                     samples.append(JerseySample(color=color, crop=crop))
             if len(samples) >= max_samples:
@@ -124,10 +150,11 @@ def collect_jersey_colors(
     class_names: Iterable[str] = DEFAULT_TEAM_ELIGIBLE_CLASS_NAMES,
     stride: int = 30,
     max_samples: int = 500,
+    **crop_kwargs,
 ) -> np.ndarray:
     """Like `collect_jersey_samples`, but returns just the colour feature
     vectors - the training data for `TeamClassifier.fit`."""
-    samples = collect_jersey_samples(video_path, detector, class_names, stride, max_samples)
+    samples = collect_jersey_samples(video_path, detector, class_names, stride, max_samples, **crop_kwargs)
     if not samples:
         return np.empty((0, 3))
     return np.array([s.color for s in samples])
