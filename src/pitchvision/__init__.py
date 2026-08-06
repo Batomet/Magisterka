@@ -30,6 +30,18 @@ from .pitch_keypoints import (
     download_pitch_keypoint_weights,
     pitch_keypoint_template,
 )
+from .set_pieces import (
+    compute_formation_repeatability,
+    compute_track_speeds,
+    compute_transition_time,
+    detect_restart_frame,
+    detect_team_dynamic_frame,
+    extract_static_formation,
+    match_formations,
+    pick_team_by_swatch_color,
+    plot_formations,
+    plot_team_speed_timeline,
+)
 from .team import (
     JerseySample,
     TeamClassifier,
@@ -99,4 +111,14 @@ __all__ = [
     "compute_combined_convex_hull",
     "plot_convex_hull",
     "save_convex_hull_frames",
+    "compute_track_speeds",
+    "detect_restart_frame",
+    "detect_team_dynamic_frame",
+    "compute_transition_time",
+    "extract_static_formation",
+    "match_formations",
+    "compute_formation_repeatability",
+    "pick_team_by_swatch_color",
+    "plot_formations",
+    "plot_team_speed_timeline",
 ]

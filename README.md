@@ -29,25 +29,27 @@ src/pitchvision/       Core Python package
   compactness.py           Inter-player-distance/centroid compactness metrics (generic, reused across phases)
   voronoi.py                Voronoi-tessellation space control (generic, reused across phases)
   convex_hull.py             Effective Playing Space via Convex Hull (generic, reused across phases)
+  set_pieces.py               Restart detection, transition timing, cross-clip formation repeatability
   pipeline.py              Ties detection+tracking+calibration+team classification into a track DataFrame
 notebooks/
   00_pipeline_demo.ipynb                 Colab notebook: run the core pipeline end-to-end on a sample clip
   01_goal_scoring_opportunity.ipynb       Defensive compactness + Voronoi space control on a Goals clip
   02_build_up_phase.ipynb                 Effective Playing Space + formation stretching on a BuildingAction clip
+  03_set_pieces.ipynb                     Transition timing + formation repeatability across multiple SetPieces clips
 ```
 
 ## Status
 
-Implemented: detection, tracking, pitch calibration, team classification —
-the shared foundation all three phase analyses build on — plus two of the
-three phase-specific analyses: goal-scoring opportunity (defensive
-compactness + Voronoi space control, `01_goal_scoring_opportunity.ipynb`)
-and build-up (Effective Playing Space via Convex Hull + formation-centroid
-stretching, `02_build_up_phase.ipynb`).
+All three phase-specific analyses from the abstract are implemented, on top
+of the shared foundation (detection, tracking, pitch calibration, team
+classification):
 
-Not yet implemented: set pieces / breaks in play (positional-structure
-repeatability, static-to-dynamic transition timing) — see the "Next steps"
-cell at the end of `01_goal_scoring_opportunity.ipynb`.
+- Goal-scoring opportunity: defensive compactness + Voronoi space control
+  (`01_goal_scoring_opportunity.ipynb`).
+- Build-up: Effective Playing Space via Convex Hull + formation-centroid
+  stretching (`02_build_up_phase.ipynb`).
+- Set pieces / breaks in play: static-to-dynamic transition timing +
+  cross-clip positional-structure repeatability (`03_set_pieces.ipynb`).
 
 ## Usage (Google Colab)
 
@@ -58,12 +60,15 @@ cell at the end of `01_goal_scoring_opportunity.ipynb`.
    sanity-check the pipeline on a clip: detection, automatic pitch
    calibration (manual point-picking as a fallback), team classification,
    and the full tracking pipeline, saved as a CSV back to Drive.
-3. Then open `notebooks/01_goal_scoring_opportunity.ipynb` (defensive
-   compactness + Voronoi space control on a `Goals` clip) and/or
-   `notebooks/02_build_up_phase.ipynb` (Effective Playing Space + formation
-   stretching on a `BuildingAction` clip) - each re-runs the same setup
-   condensed into one section, applies its own analysis, and saves the
-   results as CSVs.
+3. Then open whichever phase-specific notebook(s) you need:
+   `notebooks/01_goal_scoring_opportunity.ipynb` (defensive compactness +
+   Voronoi space control on a `Goals` clip), `notebooks/02_build_up_phase.ipynb`
+   (Effective Playing Space + formation stretching on a `BuildingAction`
+   clip), or `notebooks/03_set_pieces.ipynb` (transition timing + formation
+   repeatability - needs *several* clips of the same restart type from
+   `SetPieces`, unlike the other two which each run on a single clip). Each
+   re-runs the shared setup condensed into one section, applies its own
+   analysis, and saves the results as CSVs.
 
 ## Local development
 
@@ -221,3 +226,56 @@ hand, or reload from a previous run via `pd.read_csv(...)`, works
 identically to a live pipeline result, no detection/tracking/calibration
 required to regenerate diagrams or recompute metrics from data you already
 have.
+
+**`set_pieces.py`** covers the third phase - unlike the modules above, its
+two analyses are genuinely specific to breaks in play rather than reusable
+elsewhere:
+
+- **Static-to-dynamic transition timing**: `compute_track_speeds` adds a
+  `speed_mps` column to a tracks DataFrame - each track's frame-to-frame
+  displacement divided by actual elapsed time, computed from *smoothed*
+  positions (a short centred rolling mean) purely for the speed calculation,
+  since a few centimetres of realistic tracking jitter on a stationary
+  player can otherwise look like several m/s of "speed" once pushed through
+  the homography (verified numerically before relying on it: unsmoothed
+  jitter alone produced spikes over 4 m/s for a genuinely motionless
+  player, comfortably above the default "moving" threshold - smoothing
+  brought that safely under it). `detect_restart_frame` finds the restart
+  of play from the ball's movement onset (sustained speed above a
+  threshold, not a single noisy detection - needs the specialized
+  detector's `"ball"` class); `detect_team_dynamic_frame` finds when a
+  sustained fraction of a team's players start moving; `compute_transition_time`
+  combines both into a restart→dynamic time delta, returning `None`
+  (rather than a misleading zero) if the ball was never confidently
+  tracked in a clip. `plot_team_speed_timeline` visualises a team's mean
+  speed over the clip with both detected frames marked, to sanity-check the
+  automatic detection against what's actually in the video.
+- **Repeatability of positional structures**: a player's `track_id` doesn't
+  carry over between separate set-piece clips (no persistent
+  re-identification), so comparing formations across instances can't rely
+  on matching specific players by identity. `extract_static_formation`
+  takes a team's average player positions over a short window before a
+  clip's restart frame; `match_formations` finds the *optimal* one-to-one
+  pairing between two such position sets (the Hungarian algorithm,
+  `scipy.optimize.linear_sum_assignment`, minimising total assignment
+  distance) and reports how far apart that best-case pairing still is;
+  `compute_formation_repeatability` averages that pairwise distance across
+  every pair of instances - lower means a more consistent structure from
+  one restart to the next. Since `TeamClassifier` is fit independently per
+  clip (cluster id `0`/`1` isn't guaranteed to mean the same real team
+  across clips), `pick_team_by_swatch_color` resolves "which cluster id is
+  the team I'm tracking" in each clip by nearest colour match to a
+  reference RGB, rather than assuming id `0` always means the same team.
+  `plot_formations` overlays multiple instances' formations on one
+  `draw_pitch()` axes for a visual check alongside the numeric score.
+
+All of the above was verified against known/synthetic inputs before being
+wired into a notebook - exact run-length detection on hand-built boolean
+sequences, exact restart/transition frames on synthetic stationary-then-moving
+tracks, zero assignment distance for identical point sets under reordering,
+lower repeatability distance for near-identical formations than for
+substantially different ones, and the jitter/smoothing effect described
+above - since this module's logic (run-length detection over noisy speed
+signals, optimal assignment) is considerably less obvious to get right by
+inspection than the more direct geometric computations in the other
+modules.
