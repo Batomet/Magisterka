@@ -1,4 +1,5 @@
-from typing import Iterable, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -18,14 +19,26 @@ from .video_io import VideoFrames
 DEFAULT_TEAM_ELIGIBLE_CLASS_NAMES = ("person", "player")
 
 
+def _torso_crop(frame: np.ndarray, bbox: np.ndarray, upper_fraction: float = 0.5) -> Optional[np.ndarray]:
+    """The upper `upper_fraction` of a bounding box's crop - avoids
+    shorts/socks and the grass beneath the player's feet. Returns None if the
+    box is degenerate (e.g. clipped fully outside the frame)."""
+    x1, y1, x2, y2 = np.asarray(bbox, dtype=int)
+    x1, y1 = max(x1, 0), max(y1, 0)
+    x2, y2 = max(x2, x1 + 1), max(y2, y1 + 1)
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+    return crop[: max(1, int(crop.shape[0] * upper_fraction))]
+
+
 def extract_jersey_color(
     frame: np.ndarray, bbox: np.ndarray, upper_fraction: float = 0.5
 ) -> Optional[np.ndarray]:
     """A colour signature for a player's jersey, as a 3-element feature
     vector: (median hue, median saturation, standard deviation of value)
-    over the torso crop (the upper `upper_fraction` of the bounding box, to
-    avoid shorts/socks and the grass beneath the player's feet), with
-    pitch-grass-coloured pixels masked out.
+    over the torso crop (the upper `upper_fraction` of the bounding box),
+    with pitch-grass-coloured pixels masked out.
 
     Median value/brightness is deliberately excluded from the first two
     features - it varies a lot with shadows and lighting - but its *spread*
@@ -37,14 +50,9 @@ def extract_jersey_color(
     kit has a low value std by comparison. Returns None if the box is
     degenerate or ends up with no usable pixels.
     """
-    x1, y1, x2, y2 = np.asarray(bbox, dtype=int)
-    x1, y1 = max(x1, 0), max(y1, 0)
-    x2, y2 = max(x2, x1 + 1), max(y2, y1 + 1)
-    crop = frame[y1:y2, x1:x2]
-    if crop.size == 0:
+    torso = _torso_crop(frame, bbox, upper_fraction)
+    if torso is None:
         return None
-
-    torso = crop[: max(1, int(crop.shape[0] * upper_fraction))]
     hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV).reshape(-1, 3).astype(np.float64)
 
     hue, sat = hsv[:, 0], hsv[:, 1]
@@ -56,29 +64,42 @@ def extract_jersey_color(
     return np.array([np.median(kept[:, 0]), np.median(kept[:, 1]), np.std(kept[:, 2])])
 
 
-def collect_jersey_colors(
+@dataclass
+class JerseySample:
+    """One jersey-colour training sample: the feature vector `extract_jersey_color`
+    produced, alongside the actual torso crop it was computed from - kept
+    around so `plot_jersey_color_samples` can show what the clustering is
+    really looking at, not just its numeric summary."""
+
+    color: np.ndarray
+    crop: np.ndarray
+
+
+def collect_jersey_samples(
     video_path: str,
     detector: PlayerBallDetector,
     class_names: Iterable[str] = DEFAULT_TEAM_ELIGIBLE_CLASS_NAMES,
     stride: int = 30,
     max_samples: int = 500,
-) -> np.ndarray:
+) -> List[JerseySample]:
     """Samples every `stride`-th frame of a clip, detects players, and
-    collects their jersey colour signatures - the training data for
-    `TeamClassifier.fit`. Sampling across the whole clip (rather than a
-    single frame) covers players under different lighting/poses/occlusion
-    than any one frame would.
+    collects their jersey-colour signatures plus the crop each one came from
+    - the training data for `TeamClassifier.fit` (via `collect_jersey_colors`,
+    which discards the crops) and for `plot_jersey_color_samples` (which
+    needs them). Sampling across the whole clip (rather than a single frame)
+    covers players under different lighting/poses/occlusion than any one
+    frame would.
 
     `detector` is used with whichever classes it was constructed with (or
     overridden via `detector.detect(classes=...)` elsewhere); only detections
-    whose *class name* is in `class_names` are kept as jersey-colour samples.
-    Using the specialized football-player-detection.pt checkpoint (class name
-    "player") instead of the generic COCO "person" class keeps referees out
-    of the training data, giving a cleaner 2-cluster fit.
+    whose *class name* is in `class_names` are kept. Using the specialized
+    football-player-detection.pt checkpoint (class name "player") instead of
+    the generic COCO "person" class keeps referees out of the training data,
+    giving a cleaner 2-cluster fit.
     """
     class_names = set(class_names)
     frames = VideoFrames(video_path)
-    colors: List[np.ndarray] = []
+    samples: List[JerseySample] = []
     try:
         for i, frame in enumerate(frames):
             if i % stride != 0:
@@ -87,13 +108,91 @@ def collect_jersey_colors(
                 if det.class_name not in class_names:
                     continue
                 color = extract_jersey_color(frame, det.xyxy)
-                if color is not None:
-                    colors.append(color)
-            if len(colors) >= max_samples:
+                crop = _torso_crop(frame, det.xyxy)
+                if color is not None and crop is not None:
+                    samples.append(JerseySample(color=color, crop=crop))
+            if len(samples) >= max_samples:
                 break
     finally:
         frames.release()
-    return np.array(colors[:max_samples])
+    return samples[:max_samples]
+
+
+def collect_jersey_colors(
+    video_path: str,
+    detector: PlayerBallDetector,
+    class_names: Iterable[str] = DEFAULT_TEAM_ELIGIBLE_CLASS_NAMES,
+    stride: int = 30,
+    max_samples: int = 500,
+) -> np.ndarray:
+    """Like `collect_jersey_samples`, but returns just the colour feature
+    vectors - the training data for `TeamClassifier.fit`."""
+    samples = collect_jersey_samples(video_path, detector, class_names, stride, max_samples)
+    if not samples:
+        return np.empty((0, 3))
+    return np.array([s.color for s in samples])
+
+
+def plot_jersey_color_samples(
+    samples: List[JerseySample],
+    cluster_labels: Iterable[Optional[int]],
+    cluster_colors: Optional[Dict[int, str]] = None,
+    max_thumbnails: int = 40,
+    n_cols: int = 10,
+) -> None:
+    """Visual audit of a fitted `TeamClassifier`: a scatter of (hue,
+    saturation) coloured by cluster assignment (marker size ~ pattern
+    contrast, the value-std feature), and a grid of the actual torso crops
+    used, bordered by their assigned cluster colour.
+
+    Use this *before* trusting a fit - it's the fastest way to tell whether
+    the clustering is actually splitting on jersey colour, or on something
+    else entirely (grass bleed-through into a loose crop, shadow/lighting,
+    motion blur), which raw cluster sizes or a pitch-position plot alone
+    can't distinguish.
+    """
+    import matplotlib.pyplot as plt
+
+    cluster_labels = np.array(list(cluster_labels), dtype=object)
+    cluster_colors = cluster_colors or {}
+    colors_arr = np.array([s.color for s in samples])
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for cluster_id in sorted({c for c in cluster_labels if c is not None}):
+        mask = cluster_labels == cluster_id
+        ax.scatter(
+            colors_arr[mask, 0], colors_arr[mask, 1],
+            s=20 + colors_arr[mask, 2], label=f"cluster {cluster_id}",
+            color=cluster_colors.get(cluster_id),
+        )
+    ax.set_xlabel("Hue")
+    ax.set_ylabel("Saturation")
+    ax.set_title("Sampled jersey colours (marker size ~ pattern contrast)")
+    ax.legend()
+    plt.show()
+
+    n = min(len(samples), max_thumbnails)
+    n_cols = min(n_cols, max(n, 1))
+    n_rows = (n + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(1.4 * n_cols, 1.4 * n_rows))
+    axes = np.atleast_2d(axes)
+    for idx in range(n_rows * n_cols):
+        row, col = divmod(idx, n_cols)
+        ax = axes[row, col]
+        ax.set_xticks([])
+        ax.set_yticks([])
+        if idx >= n:
+            ax.axis("off")
+            continue
+        sample, cluster_id = samples[idx], cluster_labels[idx]
+        ax.imshow(cv2.cvtColor(sample.crop, cv2.COLOR_BGR2RGB))
+        color = cluster_colors.get(cluster_id, "black")
+        for spine in ax.spines.values():
+            spine.set_edgecolor(color)
+            spine.set_linewidth(3)
+    fig.suptitle("Sample crops, bordered by assigned cluster")
+    plt.tight_layout()
+    plt.show()
 
 
 class TeamClassifier:
@@ -145,6 +244,18 @@ class TeamClassifier:
         self._kmeans = KMeans(n_clusters=self.n_clusters, n_init=10, random_state=self.random_state)
         self._kmeans.fit(scaled)
         return self
+
+    def predict_from_colors(self, colors: np.ndarray) -> np.ndarray:
+        """Predicts cluster ids for already-extracted colour feature vectors
+        (e.g. from `collect_jersey_samples`), without re-extracting from a
+        frame/bbox like `predict` does - mainly useful for diagnostics, such
+        as feeding `plot_jersey_color_samples` the cluster label for every
+        sample used to fit this classifier."""
+        if self._kmeans is None or self._scaler is None:
+            raise RuntimeError("Call TeamClassifier.fit(...) before predict_from_colors(...).")
+        colors = np.asarray(colors, dtype=np.float64)
+        scaled = self._scaler.transform(colors)
+        return self._kmeans.predict(scaled)
 
     def predict(self, frame: np.ndarray, bbox: np.ndarray) -> Optional[int]:
         if self._kmeans is None or self._scaler is None:

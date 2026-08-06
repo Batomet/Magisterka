@@ -62,7 +62,12 @@ class PlayerBallDetector:
     `download_player_detection_weights` instead, and pass
     `classes=pitchvision.config.SPORTS_DETECTION_CLASSES` (or `None`, since
     that checkpoint only has those 4 classes anyway) - its class ids don't
-    match the COCO ones this class defaults to.
+    match the COCO ones this class defaults to. Also pass `imgsz=1280` with
+    that checkpoint: its own reference implementation
+    (https://github.com/roboflow/sports) runs it at that resolution rather
+    than Ultralytics' default 640, and a broadcast frame downscaled to 640
+    can shrink small/clustered/partially-occluded players (e.g. a crowd in
+    the box) below what the model can reliably pick up.
     """
 
     def __init__(
@@ -71,11 +76,13 @@ class PlayerBallDetector:
         confidence: float = 0.25,
         device: Optional[str] = None,
         classes: Optional[Sequence[int]] = DETECTION_CLASSES,
+        imgsz: int = 640,
     ):
         self.model = YOLO(weights)
         self.confidence = confidence
         self.device = device
         self.classes = classes
+        self.imgsz = imgsz
 
     def detect(self, frame: np.ndarray, classes: Optional[Sequence[int]] = None) -> List[Detection]:
         active_classes = classes if classes is not None else self.classes
@@ -84,6 +91,7 @@ class PlayerBallDetector:
             conf=self.confidence,
             classes=list(active_classes) if active_classes is not None else None,
             device=self.device,
+            imgsz=self.imgsz,
             verbose=False,
         )[0]
         names = results.names

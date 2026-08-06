@@ -77,7 +77,11 @@ goalkeeper, player, referee), downloaded once via
 `download_player_detection_weights` — same public-Google-Drive, no-account
 pattern as the pitch-keypoint weights — and pass
 `classes=SPORTS_DETECTION_CLASSES` (its class ids are unrelated to the COCO
-ones).
+ones). Also pass `imgsz=1280`: Ultralytics' own default (640) downscales a
+broadcast frame significantly before inference, which can drop small,
+clustered, or partially-occluded players below what the model can reliably
+pick up (e.g. a crowd of players in the box) - the checkpoint's own
+reference implementation (roboflow/sports) runs it at 1280, not 640.
 
 Pitch calibration is homography-based (`PitchCalibrator`, `cv2.findHomography`
 under the hood), fit from >=4 pixel<->pitch point correspondences. Two ways
@@ -138,6 +142,20 @@ from outfield players:
   not colour — since `TrackingPipeline.run` calls it automatically after
   `resolve_track_team_ids` whenever a `goalkeeper` class is present (a no-op
   otherwise).
+
+**Audit a fit before trusting it.** KMeans with `n_clusters=2` doesn't
+guarantee the split lands on team identity - it splits along whatever axis
+has the most variance in the sampled colours, which can just as easily be
+lighting, motion blur, or grass bleeding into a loose crop, especially if
+intra-team variance (from crop quality) is comparable to or larger than the
+real inter-team colour difference. Cluster sizes and swatch colours alone
+can't tell trustworthy apart from spurious: `collect_jersey_samples` (like
+`collect_jersey_colors`, but also keeps each sample's actual crop) plus
+`plot_jersey_color_samples` (a (hue, saturation) scatter coloured by cluster
+assignment, alongside a grid of the actual crops used, bordered by their
+assigned cluster) makes the difference visible - two separated blobs of
+roughly similar size versus one tight blob plus a handful of scattered
+outliers.
 
 Two generic spatial-analysis primitives, deliberately not tied to one phase
 (the build-up phase analysis will reuse the centroid/stretch machinery too):

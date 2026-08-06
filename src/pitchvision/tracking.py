@@ -33,7 +33,10 @@ class PlayerTracker:
     checkpoint from `pitchvision.detection.download_player_detection_weights`
     for a model that also tells players/goalkeepers/referees apart, and pass
     `classes=pitchvision.config.SPORTS_DETECTION_CLASSES` (or `None`) - its
-    class ids don't match the COCO ones this class defaults to.
+    class ids don't match the COCO ones this class defaults to. Also pass
+    `imgsz=1280` with that checkpoint - see `PlayerBallDetector`'s docstring
+    for why (its reference implementation doesn't use Ultralytics' default
+    640, and a downscaled frame can drop small/clustered/occluded players).
     """
 
     def __init__(
@@ -43,12 +46,14 @@ class PlayerTracker:
         device: Optional[str] = None,
         tracker_config: str = "bytetrack.yaml",
         classes: Optional[Sequence[int]] = DETECTION_CLASSES,
+        imgsz: int = 640,
     ):
         self.model = YOLO(weights)
         self.confidence = confidence
         self.device = device
         self.tracker_config = tracker_config
         self.classes = classes
+        self.imgsz = imgsz
 
     def track_video(self, source: str) -> Iterator[Tuple[np.ndarray, List[TrackedObject]]]:
         """Yields, for every frame in `source`, that frame (BGR, as decoded by
@@ -61,6 +66,7 @@ class PlayerTracker:
             classes=list(self.classes) if self.classes is not None else None,
             conf=self.confidence,
             device=self.device,
+            imgsz=self.imgsz,
             persist=True,
             stream=True,
             verbose=False,

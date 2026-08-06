@@ -19,9 +19,12 @@ from .pitch_keypoints import (
     pitch_keypoint_template,
 )
 from .team import (
+    JerseySample,
     TeamClassifier,
     collect_jersey_colors,
+    collect_jersey_samples,
     extract_jersey_color,
+    plot_jersey_color_samples,
     resolve_goalkeeper_team_ids,
     resolve_track_team_ids,
 )
@@ -56,8 +59,11 @@ __all__ = [
     "download_pitch_keypoint_weights",
     "pitch_keypoint_template",
     "TeamClassifier",
+    "JerseySample",
     "collect_jersey_colors",
+    "collect_jersey_samples",
     "extract_jersey_color",
+    "plot_jersey_color_samples",
     "resolve_track_team_ids",
     "resolve_goalkeeper_team_ids",
     "PlayerTracker",
