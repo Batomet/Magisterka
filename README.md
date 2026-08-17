@@ -31,11 +31,13 @@ src/pitchvision/       Core Python package
   convex_hull.py             Effective Playing Space via Convex Hull (generic, reused across phases)
   set_pieces.py               Restart detection, transition timing, cross-clip formation repeatability
   pipeline.py              Ties detection+tracking+calibration+team classification into a track DataFrame
+  evaluation.py            Validation metrics: detection precision/recall/F1, calibration holdout error, clustering accuracy
 notebooks/
   00_pipeline_demo.ipynb                 Colab notebook: run the core pipeline end-to-end on a sample clip
   01_goal_scoring_opportunity.ipynb       Defensive compactness + Voronoi space control on a Goals clip
   02_build_up_phase.ipynb                 Effective Playing Space + formation stretching on a BuildingAction clip
   03_set_pieces.ipynb                     Transition timing + formation repeatability across multiple SetPieces clips
+  04_validation.ipynb                     Hand-labeled validation: detection/calibration/clustering error, for the thesis's methodology section
 ```
 
 ## Status
@@ -294,3 +296,43 @@ above - since this module's logic (run-length detection over noisy speed
 signals, optimal assignment) is considerably less obvious to get right by
 inspection than the more direct geometric computations in the other
 modules.
+
+**`evaluation.py`** quantifies error in the three places it actually enters the
+pipeline, for the thesis's validation/methodology section - none of them has a
+pre-existing ground-truth split for this project's own broadcast footage, so
+every function here is meant to be scored against a small hand-labeled sample
+rather than a full benchmark dataset (see `notebooks/04_validation.ipynb`,
+which builds that sample directly in-notebook the same way notebook `00`
+hand-picks calibration landmarks: hover over a `plotly` frame display to read
+pixel coordinates, then fill them into a dict):
+
+- **Detection (YOLO)**: `predicted_boxes_dataframe`/`ground_truth_boxes_dataframe`
+  build matching DataFrames from the detector's own output on a handful of
+  chosen frames and from hand-labeled boxes for those same frames;
+  `compute_detection_metrics` matches them by IoU per (frame, class) - greedy
+  highest-IoU-first, class-scoped so a correctly-placed but mislabeled box
+  counts as both a false positive for its predicted class and a false
+  negative for its true one - and returns precision/recall/F1/mean-IoU per
+  class plus a micro-averaged "overall" row.
+- **Calibration (homography)**: `PitchCalibrator.reprojection_error` alone
+  measures error on the *same* points a homography was fit from, which
+  always looks good and says nothing about accuracy elsewhere on the pitch.
+  `compute_calibration_holdout_error` instead does repeated random
+  subsampling (Monte Carlo) validation: given more landmark correspondences
+  than the minimum 4 a fit needs (hand-picked the same way as the manual
+  calibration fallback), it repeatedly fits on a random subset and measures
+  reprojection error, in metres, on the rest, pooling every held-out error
+  across many random splits into one mean/std/max.
+- **Team clustering (K-means)**: `compute_clustering_accuracy` compares
+  hand-labeled true team per track against the resolved cluster `team_id`,
+  under the *optimal* cluster-id-to-true-label matching (the Hungarian
+  algorithm on the confusion matrix, `scipy.optimize.linear_sum_assignment`
+  - the same tool `set_pieces.match_formations` uses for a different optimal
+  pairing problem) - required because a cluster id (`0`/`1`) carries no
+  identity of its own.
+
+All three metric functions were verified against synthetic inputs (exact IoU
+on known box overlaps, near-zero holdout error on an exactly-homography-able
+synthetic point set that grows with injected pixel noise, and exact accuracy
+recovery for a clustering that's a known permutation of the true labels)
+before being wired into the notebook.

@@ -23,6 +23,14 @@ from .convex_hull import (
     save_convex_hull_frames,
 )
 from .detection import Detection, PlayerBallDetector, download_player_detection_weights
+from .evaluation import (
+    box_iou,
+    compute_calibration_holdout_error,
+    compute_clustering_accuracy,
+    compute_detection_metrics,
+    ground_truth_boxes_dataframe,
+    predicted_boxes_dataframe,
+)
 from .pipeline import TrackingPipeline
 from .pitch import draw_pitch, plot_positions
 from .pitch_keypoints import (
@@ -78,6 +86,12 @@ __all__ = [
     "PlayerBallDetector",
     "download_player_detection_weights",
     "TrackingPipeline",
+    "box_iou",
+    "predicted_boxes_dataframe",
+    "ground_truth_boxes_dataframe",
+    "compute_detection_metrics",
+    "compute_calibration_holdout_error",
+    "compute_clustering_accuracy",
     "draw_pitch",
     "plot_positions",
     "PitchKeypointDetector",
