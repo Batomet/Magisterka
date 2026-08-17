@@ -37,7 +37,7 @@ notebooks/
   01_goal_scoring_opportunity.ipynb       Defensive compactness + Voronoi space control on a Goals clip
   02_build_up_phase.ipynb                 Effective Playing Space + formation stretching on a BuildingAction clip
   03_set_pieces.ipynb                     Transition timing + formation repeatability across multiple SetPieces clips
-  04_validation.ipynb                     Hand-labeled validation: detection/calibration/clustering error, for the thesis's methodology section
+  04_validation.ipynb                     Detection/calibration/clustering error checks (automatic by default, optional hand-labeled sections for precise numbers)
 ```
 
 ## Status
@@ -312,35 +312,47 @@ modules.
 
 **`evaluation.py`** quantifies error in the three places it actually enters the
 pipeline, for the thesis's validation/methodology section - none of them has a
-pre-existing ground-truth split for this project's own broadcast footage, so
-every function here is meant to be scored against a small hand-labeled sample
-rather than a full benchmark dataset (see `notebooks/04_validation.ipynb`,
-which builds that sample directly in-notebook the same way notebook `00`
-hand-picks calibration landmarks: hover over a `plotly` frame display to read
-pixel coordinates, then fill them into a dict):
+pre-existing ground-truth split for this project's own broadcast footage.
+`notebooks/04_validation.ipynb` runs top to bottom with no manual input by
+default, same as `00`-`03`: calibration's holdout error is computed from
+`PitchKeypointDetector`'s own automatically-detected keypoints (their true
+pitch position is a known Laws-of-the-Game constant, not something a human
+needs to label, so no manual point-picking is needed at all); detection and
+clustering fall back to automatic, ground-truth-free proxy checks (per-class
+detection count/confidence stability across the clip; a silhouette score for
+how well-separated the two colour clusters are) since there's no way to
+compute real precision/recall or clustering accuracy without a human saying
+what's actually true. Optional `RUN_MANUAL_.../USE_MANUAL_...` flags (off by
+default, same pattern as notebook `00`'s `USE_MANUAL_FALLBACK`) turn on real
+hand-labeled precision/recall and clustering-accuracy numbers when a more
+precise figure is worth the few minutes of hand-labeling - hover over a
+`plotly` frame display to read pixel coordinates, then fill them into a dict:
 
-- **Detection (YOLO)**: `predicted_boxes_dataframe`/`ground_truth_boxes_dataframe`
-  build matching DataFrames from the detector's own output on a handful of
-  chosen frames and from hand-labeled boxes for those same frames;
-  `compute_detection_metrics` matches them by IoU per (frame, class) - greedy
-  highest-IoU-first, class-scoped so a correctly-placed but mislabeled box
-  counts as both a false positive for its predicted class and a false
-  negative for its true one - and returns precision/recall/F1/mean-IoU per
-  class plus a micro-averaged "overall" row.
-- **Calibration (homography)**: `PitchCalibrator.reprojection_error` alone
-  measures error on the *same* points a homography was fit from, which
+- **Calibration (homography)** - automatic by default: `PitchCalibrator.reprojection_error`
+  alone measures error on the *same* points a homography was fit from, which
   always looks good and says nothing about accuracy elsewhere on the pitch.
   `compute_calibration_holdout_error` instead does repeated random
-  subsampling (Monte Carlo) validation: given more landmark correspondences
-  than the minimum 4 a fit needs (hand-picked the same way as the manual
-  calibration fallback), it repeatedly fits on a random subset and measures
-  reprojection error, in metres, on the rest, pooling every held-out error
-  across many random splits into one mean/std/max.
-- **Team clustering (K-means)**: `compute_clustering_accuracy` compares
-  hand-labeled true team per track against the resolved cluster `team_id`,
-  under the *optimal* cluster-id-to-true-label matching (the Hungarian
-  algorithm on the confusion matrix, `scipy.optimize.linear_sum_assignment`
-  - the same tool `set_pieces.match_formations` uses for a different optimal
+  subsampling (Monte Carlo) validation: given more point correspondences than
+  the minimum 4 a fit needs - by default `PitchKeypointDetector`'s own
+  confidently-detected automatic keypoints, or hand-picked landmarks via the
+  optional manual fallback - it repeatedly fits on a random subset and
+  measures reprojection error, in metres, on the rest, pooling every
+  held-out error across many random splits into one mean/std/max.
+- **Detection (YOLO)** - optional manual section for a real number:
+  `predicted_boxes_dataframe`/`ground_truth_boxes_dataframe` build matching
+  DataFrames from the detector's own output on a handful of chosen frames and
+  from hand-labeled boxes for those same frames; `compute_detection_metrics`
+  matches them by IoU per (frame, class) - greedy highest-IoU-first,
+  class-scoped so a correctly-placed but mislabeled box counts as both a
+  false positive for its predicted class and a false negative for its true
+  one - and returns precision/recall/F1/mean-IoU per class plus a
+  micro-averaged "overall" row.
+- **Team clustering (K-means)** - optional manual section for a real number:
+  `compute_clustering_accuracy` compares hand-labeled true team per track
+  against the resolved cluster `team_id`, under the *optimal*
+  cluster-id-to-true-label matching (the Hungarian algorithm on the
+  confusion matrix, `scipy.optimize.linear_sum_assignment` - the same tool
+  `set_pieces.match_formations` uses for a different optimal
   pairing problem) - required because a cluster id (`0`/`1`) carries no
   identity of its own.
 
