@@ -182,6 +182,19 @@ from outfield players:
   `resolve_track_team_ids` whenever a `goalkeeper` class is present (a no-op
   otherwise).
 
+  `resolve_track_team_ids` only ever stamps its majority-vote `team_id` onto
+  a row whose OWN `class_name` that frame is eligible (e.g. `"player"`) - a
+  track's majority is computed from its eligible frames, but never applied
+  to that same track's frames the detector itself called something else
+  that frame. This matters because the detector's class prediction can
+  flicker frame-to-frame for the same tracked object: without this
+  restriction, a referee briefly (mis)classified `"player"` in even one
+  frame would leak a real `team_id` onto every frame of that referee's
+  track, including the ones correctly labeled `"referee"`. It's still not
+  perfect - the one flickered frame itself still gets a forced nearest-cluster
+  `team_id`, since nothing here can tell that specific frame's class
+  prediction was wrong - just the ones that don't flicker.
+
 **Audit a fit before trusting it.** KMeans with `n_clusters=2` doesn't
 guarantee the split lands on team identity - it splits along whatever axis
 has the most variance in the sampled colours, which can just as easily be

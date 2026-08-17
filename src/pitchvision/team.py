@@ -321,14 +321,27 @@ def resolve_track_team_ids(
     a downstream spatial analysis should actually use, since a single frame's
     prediction can flip due to occlusion, motion blur, or a bad crop.
 
+    The majority vote is only ever applied to a row whose OWN `class_name`
+    is in `class_names` - a track's majority team is computed from its
+    eligible (e.g. "player") frames, but never stamped onto that same
+    track's frames where the detector itself called it something else that
+    frame (e.g. "referee", "goalkeeper"). The detector's class prediction
+    can flicker frame-to-frame for the very same tracked object - a referee
+    briefly misclassified "player" in even one frame would otherwise leak a
+    real team_id onto every frame of that referee's track, including the
+    ones correctly labeled "referee". Non-eligible rows keep `team_id =
+    None`, exactly like a frame that was never eligible to begin with.
+
     The original per-frame predictions are kept as `team_id_raw` for
     inspection/debugging.
     """
     class_names = set(class_names)
     df = tracks_df.rename(columns={"team_id": "team_id_raw"})
-    eligible_rows = df[df["class_name"].isin(class_names) & df["team_id_raw"].notna()]
+    eligible_mask = df["class_name"].isin(class_names)
+    eligible_rows = df[eligible_mask & df["team_id_raw"].notna()]
     majority = eligible_rows.groupby("track_id")["team_id_raw"].agg(lambda s: s.mode().iloc[0])
-    df["team_id"] = df["track_id"].map(majority)
+    df["team_id"] = np.nan
+    df.loc[eligible_mask, "team_id"] = df.loc[eligible_mask, "track_id"].map(majority)
     return df
 
 
