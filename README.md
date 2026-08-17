@@ -34,10 +34,10 @@ src/pitchvision/       Core Python package
   evaluation.py            Validation metrics: detection precision/recall/F1, calibration holdout error, clustering accuracy
 notebooks/
   00_pipeline_demo.ipynb                 Colab notebook: run the core pipeline end-to-end on a sample clip
-  01_goal_scoring_opportunity.ipynb       Defensive compactness + Voronoi space control on a Goals clip
-  02_build_up_phase.ipynb                 Effective Playing Space + formation stretching on a BuildingAction clip
+  01_goal_scoring_opportunity.ipynb       Defensive compactness + Voronoi space control, batch-processed over every Goals clip
+  02_build_up_phase.ipynb                 Effective Playing Space + formation stretching, batch-processed over every BuildingAction clip
   03_set_pieces.ipynb                     Transition timing + formation repeatability across multiple SetPieces clips
-  04_validation.ipynb                     Detection/calibration/clustering error checks (automatic by default, optional hand-labeled sections for precise numbers)
+  04_validation.ipynb                     Detection/calibration/clustering error checks, batch-processed over every clip in all three folders (automatic by default, optional hand-labeled sections for precise numbers)
 ```
 
 ## Status
@@ -64,13 +64,21 @@ classification):
    and the full tracking pipeline, saved as a CSV back to Drive.
 3. Then open whichever phase-specific notebook(s) you need:
    `notebooks/01_goal_scoring_opportunity.ipynb` (defensive compactness +
-   Voronoi space control on a `Goals` clip), `notebooks/02_build_up_phase.ipynb`
-   (Effective Playing Space + formation stretching on a `BuildingAction`
-   clip), or `notebooks/03_set_pieces.ipynb` (transition timing + formation
-   repeatability - needs *several* clips of the same restart type from
-   `SetPieces`, unlike the other two which each run on a single clip). Each
-   re-runs the shared setup condensed into one section, applies its own
-   analysis, and saves the results as CSVs.
+   Voronoi space control) and `notebooks/02_build_up_phase.ipynb` (Effective
+   Playing Space + formation stretching) each batch-process **every** clip in
+   `Goals`/`BuildingAction` respectively - one pass over the whole folder,
+   with a per-clip failure (bad calibration, too few jersey samples) skipped
+   rather than stopping the run, and results saved both per-clip and as one
+   combined `*_all_clips_summary.csv`. A separate "inspect one clip closely"
+   section at the end of each notebook re-uses the batch results (no
+   re-running the pipeline) for a close look - including, in
+   `01_goal_scoring_opportunity.ipynb`, hand-identifying which team was
+   defending, since that can't be automated. `notebooks/03_set_pieces.ipynb`
+   instead needs *several* clips of the *same* restart type, hand-picked by
+   watching them first (`instance_videos`) - repeatability across genuinely
+   different restart types wouldn't be a meaningful comparison, so this one
+   is deliberately not "every clip in the folder". Each notebook re-runs the
+   shared setup condensed into one section before its own analysis.
 
 ## Local development
 
@@ -314,7 +322,12 @@ modules.
 pipeline, for the thesis's validation/methodology section - none of them has a
 pre-existing ground-truth split for this project's own broadcast footage.
 `notebooks/04_validation.ipynb` runs top to bottom with no manual input by
-default, same as `00`-`03`: calibration's holdout error is computed from
+default, same as `00`-`03`, over **every clip in `Goals`/`BuildingAction`/`SetPieces`**
+- results are saved to one accumulating `validation_all_clips.csv` on Drive:
+re-running the notebook (e.g. after adding new clips) merges in rather than
+overwriting, with a re-validated clip's row replaced rather than duplicated
+(matched on clip name + source folder). Calibration's holdout error is
+computed from
 `PitchKeypointDetector`'s own automatically-detected keypoints (their true
 pitch position is a known Laws-of-the-Game constant, not something a human
 needs to label, so no manual point-picking is needed at all); detection and
