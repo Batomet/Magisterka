@@ -113,6 +113,21 @@ to get those correspondences:
   matches by hand for clips where automatic detection can't find enough
   confident keypoints (heavy occlusion, an unusual crop).
 
+By default `TrackingPipeline` reuses one homography (fit once, before the
+run starts) for the whole clip, which is only correct if the camera doesn't
+pan/zoom/cut. Broadcast footage often does move within a clip - pass a
+`keypoint_detector` (a fitted `PitchKeypointDetector`) to `TrackingPipeline`
+instead, and it re-runs automatic keypoint detection and refits the
+homography every `recalibration_interval` frames (default 30) rather than
+just once. If a recalibration attempt can't find enough confident keypoints
+(occlusion, a mid-pan blur), the previous homography is kept for that frame
+rather than the run failing. Each output row records `calibration_frame` -
+the frame index of the homography actually used to project it - so
+recalibration health can be checked afterwards (e.g.
+`tracks_df["calibration_frame"].value_counts()`; long runs stuck on one
+value mean recalibration kept failing and the pipeline fell back
+throughout).
+
 Team classification (`team.py`) is a classical colour-clustering approach:
 `collect_jersey_colors` samples player crops across a clip and reduces each
 to a 3-feature signature via `extract_jersey_color` - median hue, median
