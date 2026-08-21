@@ -35,7 +35,7 @@ src/pitchvision/       Core Python package
 notebooks/
   00_pipeline_demo.ipynb                 Colab notebook: run the core pipeline end-to-end on a sample clip
   01_goal_scoring_opportunity.ipynb       Defensive compactness + Voronoi space control, batch-processed over every Goals clip
-  02_build_up_phase.ipynb                 Effective Playing Space + formation stretching, batch-processed over every BuildingAction clip
+  02_build_up_phase.ipynb                 Effective Playing Space + formation stretching + Voronoi space control, batch-processed over every BuildingAction clip
   03_set_pieces.ipynb                     Transition timing + formation repeatability across multiple SetPieces clips
   04_validation.ipynb                     Detection/calibration/clustering error checks, batch-processed over every clip in all three folders (automatic by default, optional hand-labeled sections for precise numbers)
 ```
@@ -49,7 +49,7 @@ classification):
 - Goal-scoring opportunity: defensive compactness + Voronoi space control
   (`01_goal_scoring_opportunity.ipynb`).
 - Build-up: Effective Playing Space via Convex Hull + formation-centroid
-  stretching (`02_build_up_phase.ipynb`).
+  stretching + Voronoi space control (`02_build_up_phase.ipynb`).
 - Set pieces / breaks in play: static-to-dynamic transition timing +
   cross-clip positional-structure repeatability (`03_set_pieces.ipynb`).
 
@@ -65,8 +65,9 @@ classification):
 3. Then open whichever phase-specific notebook(s) you need:
    `notebooks/01_goal_scoring_opportunity.ipynb` (defensive compactness +
    Voronoi space control) and `notebooks/02_build_up_phase.ipynb` (Effective
-   Playing Space + formation stretching) each batch-process **every** clip in
-   `Goals`/`BuildingAction` respectively - one pass over the whole folder,
+   Playing Space + formation stretching + Voronoi space control) each
+   batch-process **every** clip in `Goals`/`BuildingAction` respectively -
+   one pass over the whole folder,
    with a per-clip failure (bad calibration, too few jersey samples) skipped
    rather than stopping the run, and results saved both per-clip and as one
    combined `*_all_clips_summary.csv`. A separate "inspect one clip closely"
