@@ -47,7 +47,9 @@ from .set_pieces import (
     extract_static_formation,
     match_formations,
     pick_team_by_swatch_color,
+    plot_formation_matching,
     plot_formations,
+    plot_speed_smoothing_comparison,
     plot_team_speed_timeline,
 )
 from .team import (
@@ -134,5 +136,7 @@ __all__ = [
     "compute_formation_repeatability",
     "pick_team_by_swatch_color",
     "plot_formations",
+    "plot_formation_matching",
     "plot_team_speed_timeline",
+    "plot_speed_smoothing_comparison",
 ]

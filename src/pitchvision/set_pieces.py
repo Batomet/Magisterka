@@ -288,6 +288,46 @@ def plot_formations(
     ax.legend()
 
 
+def plot_formation_matching(
+    ax: Axes,
+    positions_a: np.ndarray,
+    positions_b: np.ndarray,
+    label_a: str = "Instance A",
+    label_b: str = "Instance B",
+    color_a: str = "tab:blue",
+    color_b: str = "tab:orange",
+    line_color: str = "gray",
+) -> float:
+    """Visualises `match_formations`' optimal pairing between two formation
+    instances directly: both point sets plotted on `ax` (typically a
+    `pitchvision.pitch.draw_pitch()` axes), with a line drawn between every
+    matched pair - the same Hungarian-algorithm assignment
+    `compute_formation_repeatability` scores numerically, made visible for a
+    single pair. Returns the pair's mean matched distance (metres), the same
+    number `match_formations` itself returns, so it can be put in a title or
+    caption alongside the figure.
+
+    If `positions_a`/`positions_b` differ in length, only the first
+    `min(len(a), len(b))` matched pairs (by `match_formations`) get a line -
+    matching its own documented behaviour of leaving leftover points
+    unmatched."""
+    positions_a = np.asarray(positions_a, dtype=np.float64)
+    positions_b = np.asarray(positions_b, dtype=np.float64)
+    col_ind, mean_distance = match_formations(positions_a, positions_b)
+
+    n_matched = len(col_ind)
+    for i in range(n_matched):
+        j = col_ind[i]
+        ax.plot(
+            [positions_a[i, 0], positions_b[j, 0]], [positions_a[i, 1], positions_b[j, 1]],
+            color=line_color, linewidth=1, linestyle="-", zorder=2,
+        )
+    ax.scatter(positions_a[:, 0], positions_a[:, 1], color=color_a, label=label_a, edgecolors="black", s=70, zorder=3)
+    ax.scatter(positions_b[:, 0], positions_b[:, 1], color=color_b, label=label_b, edgecolors="black", s=70, zorder=3)
+    ax.legend()
+    return mean_distance
+
+
 def plot_team_speed_timeline(
     ax: Axes,
     tracks_df: pd.DataFrame,
@@ -314,4 +354,47 @@ def plot_team_speed_timeline(
         ax.axvline(dynamic_frame, color="red", linestyle=":", label="Dynamic transition")
     ax.set_xlabel("Frame")
     ax.set_ylabel("Mean speed (m/s)")
+    ax.legend()
+
+
+def plot_speed_smoothing_comparison(
+    ax: Axes,
+    tracks_df: pd.DataFrame,
+    team_id: int,
+    fps: float,
+    class_names: Iterable[str] = DEFAULT_OUTFIELD_CLASS_NAMES,
+    smoothing_window: int = 3,
+    restart_frame: Optional[int] = None,
+    dynamic_frame: Optional[int] = None,
+) -> None:
+    """Plots a team's mean per-frame speed twice on the same axes - once
+    computed with NO smoothing (`compute_track_speeds(..., smoothing_window=1)`,
+    the raw, jittery signal) and once with the smoothing this module actually
+    uses everywhere else (`smoothing_window`, default 3) - to make visible
+    why `compute_track_speeds`/`detect_team_dynamic_frame` smooth positions
+    before differencing in the first place: a few centimetres of realistic
+    tracking jitter on an otherwise-stationary player can look like several
+    m/s of spurious "speed" once pushed through the homography, which the
+    raw curve shows directly and the smoothed curve visibly damps.
+    Restart/dynamic-transition frames, if given, are marked the same way as
+    `plot_team_speed_timeline`."""
+    class_names = set(class_names)
+    eligible = tracks_df[(tracks_df["team_id"] == team_id) & tracks_df["class_name"].isin(class_names)]
+
+    raw = compute_track_speeds(eligible, fps, smoothing_window=1)
+    raw_mean = raw.groupby("frame")["speed_mps"].mean().sort_index()
+    smoothed = compute_track_speeds(eligible, fps, smoothing_window=smoothing_window)
+    smoothed_mean = smoothed.groupby("frame")["speed_mps"].mean().sort_index()
+
+    ax.plot(raw_mean.index, raw_mean.to_numpy(), color="lightgray", linewidth=1, label="Bez filtra (surowa prędkość)")
+    ax.plot(
+        smoothed_mean.index, smoothed_mean.to_numpy(), color="tab:blue", linewidth=2,
+        label=f"Filtr średniej kroczącej (okno={smoothing_window})",
+    )
+    if restart_frame is not None:
+        ax.axvline(restart_frame, color="black", linestyle="--", label="Wznowienie gry")
+    if dynamic_frame is not None:
+        ax.axvline(dynamic_frame, color="red", linestyle=":", label="Przejście w stan dynamiczny")
+    ax.set_xlabel("Klatka")
+    ax.set_ylabel("Średnia prędkość drużyny (m/s)")
     ax.legend()
