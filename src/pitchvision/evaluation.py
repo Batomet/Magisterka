@@ -226,6 +226,99 @@ def compute_calibration_holdout_error(
 # ---------------------------------------------------------------------------
 
 
+def diagnose_team_assignment(
+    tracks_df: pd.DataFrame,
+    class_names: Sequence[str] = ("player",),
+    max_players_per_team: int = 11,
+    duplicate_distance_m: float = 1.0,
+) -> dict:
+    """Diagnoses *why* a clip's per-frame team headcount exceeds
+    `max_players_per_team` (impossible for a real match - 11 outfield
+    players max per team), distinguishing three independent failure modes
+    that need different fixes, from `tracks_df` alone (as produced by
+    `TrackingPipeline.run()` - no need to re-run detection/tracking/team
+    classification to diagnose an already-tracked clip):
+
+    1. **Class leakage** - rows with a `team_id` whose `class_name` isn't in
+       `class_names` (e.g. a referee/goalkeeper that ended up with a team
+       label). Shouldn't happen by `TrackingPipeline`'s own construction
+       (`team_id` is only ever set for `class_name in team_eligible_class_names`),
+       so a non-zero count here points at a mismatch between the
+       `class_names` this function was called with and what the pipeline
+       actually used - not a clustering problem.
+    2. **Track fragmentation** - the same real player briefly losing track
+       (occlusion, a crowd of players, a replay cut) and ByteTrack
+       reassigning a NEW `track_id` on reappearance, which then gets
+       double-counted as two people. Detected as pairs of same-team
+       track_ids implausibly close together (`duplicate_distance_m`) in the
+       same frame - two distinct real players don't usually stand within a
+       metre of each other except in a goalmouth scramble, so a *consistent*
+       excess of close pairs points at fragmentation rather than a crowded
+       box.
+    3. **Bad colour clustering** - if `unique_tracks_per_team` (distinct
+       `track_id`s ever labeled that team across the WHOLE clip, not just one
+       frame) is far beyond what real substitutions could explain, the
+       K-means jersey-colour fit itself is probably not splitting on team
+       identity (similar kit colours, lighting/grass bleed-through
+       dominating the fit) rather than any one frame being a fluke - see
+       `pitchvision.team`'s "Audit a fit before trusting it" and
+       `plot_jersey_color_samples`.
+
+    Returns a dict with `n_eligible_rows`, `n_frames`, `violation_rate` (share
+    of frames where any team exceeds `max_players_per_team`),
+    `unique_tracks_per_team`, `max_simultaneous_per_team`, `n_leaked_rows`,
+    `leaked_class_name_counts`, and `close_duplicate_pairs` (a DataFrame, one
+    row per implausibly-close same-team pair found in a violating frame -
+    empty if none)."""
+    class_names = set(class_names)
+    eligible = tracks_df[tracks_df["class_name"].isin(class_names) & tracks_df["team_id"].notna()]
+    leaked = tracks_df[tracks_df["team_id"].notna() & ~tracks_df["class_name"].isin(class_names)]
+
+    counts = eligible.groupby(["frame", "team_id"]).size()
+    violating_frames = sorted({frame for frame, _ in counts[counts > max_players_per_team].index})
+    n_frames = eligible["frame"].nunique()
+    violation_rate = len(violating_frames) / n_frames if n_frames else float("nan")
+
+    unique_tracks_per_team = eligible.groupby("team_id")["track_id"].nunique().to_dict()
+    max_simultaneous_per_team = counts.groupby("team_id").max().to_dict() if not counts.empty else {}
+
+    close_pairs = []
+    violating = eligible[eligible["frame"].isin(violating_frames)]
+    for frame, frame_group in violating.groupby("frame"):
+        for team_id, team_group in frame_group.groupby("team_id"):
+            if len(team_group) < 2:
+                continue
+            positions = team_group[["pitch_x", "pitch_y"]].to_numpy()
+            track_ids = team_group["track_id"].to_numpy()
+            dists = np.linalg.norm(positions[:, None, :] - positions[None, :, :], axis=-1)
+            np.fill_diagonal(dists, np.inf)
+            i_idx, j_idx = np.where(dists < duplicate_distance_m)
+            for i, j in zip(i_idx, j_idx):
+                if i < j:
+                    close_pairs.append(
+                        {
+                            "frame": frame,
+                            "team_id": team_id,
+                            "track_a": track_ids[i],
+                            "track_b": track_ids[j],
+                            "distance_m": dists[i, j],
+                        }
+                    )
+
+    return {
+        "n_eligible_rows": len(eligible),
+        "n_frames": n_frames,
+        "violation_rate": violation_rate,
+        "unique_tracks_per_team": unique_tracks_per_team,
+        "max_simultaneous_per_team": max_simultaneous_per_team,
+        "n_leaked_rows": len(leaked),
+        "leaked_class_name_counts": leaked["class_name"].value_counts().to_dict(),
+        "close_duplicate_pairs": pd.DataFrame(
+            close_pairs, columns=["frame", "team_id", "track_a", "track_b", "distance_m"]
+        ),
+    }
+
+
 def compute_clustering_accuracy(true_labels: Sequence, predicted_labels: Sequence) -> dict:
     """Accuracy of `predicted_labels` (KMeans cluster ids) against
     `true_labels` (hand-labeled real team identity for a sample of tracks),

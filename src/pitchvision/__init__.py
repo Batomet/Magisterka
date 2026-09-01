@@ -28,6 +28,7 @@ from .evaluation import (
     compute_calibration_holdout_error,
     compute_clustering_accuracy,
     compute_detection_metrics,
+    diagnose_team_assignment,
     ground_truth_boxes_dataframe,
     predicted_boxes_dataframe,
 )
@@ -94,6 +95,7 @@ __all__ = [
     "compute_detection_metrics",
     "compute_calibration_holdout_error",
     "compute_clustering_accuracy",
+    "diagnose_team_assignment",
     "draw_pitch",
     "plot_positions",
     "PitchKeypointDetector",
