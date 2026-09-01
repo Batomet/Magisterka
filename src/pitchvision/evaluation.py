@@ -249,12 +249,18 @@ def diagnose_team_assignment(
     2. **Track fragmentation** - the same real player briefly losing track
        (occlusion, a crowd of players, a replay cut) and ByteTrack
        reassigning a NEW `track_id` on reappearance, which then gets
-       double-counted as two people. Detected as pairs of same-team
-       track_ids implausibly close together (`duplicate_distance_m`) in the
-       same frame - two distinct real players don't usually stand within a
-       metre of each other except in a goalmouth scramble, so a *consistent*
-       excess of close pairs points at fragmentation rather than a crowded
-       box.
+       double-counted as two people. Flagged as pairs of same-team track_ids
+       implausibly close together (`duplicate_distance_m`) in the same
+       frame - but pitch-position closeness alone is ambiguous (a genuinely
+       crowded goalmouth, e.g. at a corner, can put two real players within
+       a metre of each other too). Each flagged pair also gets its pixel
+       bounding-box IoU (`bbox_iou`, via `box_iou`, when `bbox_x1..y2`
+       columns are present): two distinct real bodies essentially never
+       have substantial box overlap, so a HIGH `bbox_iou` (rule of thumb:
+       above ~0.3) on a pair that's also close in pitch coordinates is
+       near-certain proof of one physical player detected/tracked twice,
+       whereas close-in-pitch-space but LOW `bbox_iou` looks more like
+       genuine on-pitch congestion, not a tracking bug.
     3. **Bad colour clustering** - if `unique_tracks_per_team` (distinct
        `track_id`s ever labeled that team across the WHOLE clip, not just one
        frame) is far beyond what real substitutions could explain, the
@@ -268,8 +274,9 @@ def diagnose_team_assignment(
     of frames where any team exceeds `max_players_per_team`),
     `unique_tracks_per_team`, `max_simultaneous_per_team`, `n_leaked_rows`,
     `leaked_class_name_counts`, and `close_duplicate_pairs` (a DataFrame, one
-    row per implausibly-close same-team pair found in a violating frame -
-    empty if none)."""
+    row per implausibly-close same-team pair found in a violating frame,
+    including its pixel bounding-box IoU (`bbox_iou`, NaN if `tracks_df`
+    lacks bbox columns) - empty if none)."""
     class_names = set(class_names)
     eligible = tracks_df[tracks_df["class_name"].isin(class_names) & tracks_df["team_id"].notna()]
     leaked = tracks_df[tracks_df["team_id"].notna() & ~tracks_df["class_name"].isin(class_names)]
@@ -282,6 +289,9 @@ def diagnose_team_assignment(
     unique_tracks_per_team = eligible.groupby("team_id")["track_id"].nunique().to_dict()
     max_simultaneous_per_team = counts.groupby("team_id").max().to_dict() if not counts.empty else {}
 
+    bbox_cols = ["bbox_x1", "bbox_y1", "bbox_x2", "bbox_y2"]
+    has_bbox = all(c in eligible.columns for c in bbox_cols)
+
     close_pairs = []
     violating = eligible[eligible["frame"].isin(violating_frames)]
     for frame, frame_group in violating.groupby("frame"):
@@ -290,20 +300,21 @@ def diagnose_team_assignment(
                 continue
             positions = team_group[["pitch_x", "pitch_y"]].to_numpy()
             track_ids = team_group["track_id"].to_numpy()
+            boxes = team_group[bbox_cols].to_numpy() if has_bbox else None
             dists = np.linalg.norm(positions[:, None, :] - positions[None, :, :], axis=-1)
             np.fill_diagonal(dists, np.inf)
             i_idx, j_idx = np.where(dists < duplicate_distance_m)
             for i, j in zip(i_idx, j_idx):
                 if i < j:
-                    close_pairs.append(
-                        {
-                            "frame": frame,
-                            "team_id": team_id,
-                            "track_a": track_ids[i],
-                            "track_b": track_ids[j],
-                            "distance_m": dists[i, j],
-                        }
-                    )
+                    pair = {
+                        "frame": frame,
+                        "team_id": team_id,
+                        "track_a": track_ids[i],
+                        "track_b": track_ids[j],
+                        "distance_m": dists[i, j],
+                    }
+                    pair["bbox_iou"] = box_iou(boxes[i], boxes[j]) if has_bbox else float("nan")
+                    close_pairs.append(pair)
 
     return {
         "n_eligible_rows": len(eligible),
@@ -314,7 +325,7 @@ def diagnose_team_assignment(
         "n_leaked_rows": len(leaked),
         "leaked_class_name_counts": leaked["class_name"].value_counts().to_dict(),
         "close_duplicate_pairs": pd.DataFrame(
-            close_pairs, columns=["frame", "team_id", "track_a", "track_b", "distance_m"]
+            close_pairs, columns=["frame", "team_id", "track_a", "track_b", "distance_m", "bbox_iou"]
         ),
     }
 
